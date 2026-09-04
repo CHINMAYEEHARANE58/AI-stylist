@@ -1,0 +1,345 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OutfitSource {
+  MANUAL
+  AI_GENERATED
+  INSPIRATION_MATCH
+}
+
+enum NotificationType {
+  OUTFIT
+  WEATHER
+  SALE
+  TREND
+  SYSTEM
+}
+
+model User {
+  id                       String                    @id @default(cuid())
+  email                    String                    @unique
+  passwordHash             String?
+  emailVerifiedAt          DateTime?
+  role                     Role                      @default(USER)
+  googleSubject            String?                   @unique
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  profile                  UserProfile?
+  preferences              UserPreference?
+  wardrobe                 Wardrobe?
+  refreshSessions          RefreshSession[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  clothingItems            ClothingItem[]
+  outfits                  Outfit[]
+  savedOutfits             SavedOutfit[]
+  recommendations          AIRecommendation[]
+  stylingHistory           AIStylingHistory[]
+  inspirationImages        InspirationImage[]
+  shoppingRecommendations  ShoppingRecommendation[]
+  wishlistItems            WishlistItem[]
+  notifications            Notification[]
+  activities               UserActivity[]
+}
+
+model UserProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  firstName     String
+  lastName      String?
+  imageUrl      String?
+  bio           String?  @db.VarChar(500)
+  location      String?  @db.VarChar(120)
+  clothingSizes Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserPreference {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  preferredAesthetics     String[] @default([])
+  favoriteColors          String[] @default([])
+  stylePreferences        String[] @default([])
+  notificationPreferences Json?
+  privacyPreferences      Json?
+  aiPreferences           Json?
+  appearance              String?  @default("system")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  userAgent  String?   @db.VarChar(512)
+  ipHash     String?   @db.VarChar(128)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Wardrobe {
+  id        String         @id @default(cuid())
+  userId    String         @unique
+  name      String         @default("My wardrobe") @db.VarChar(120)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clothing  ClothingItem[]
+}
+
+model ClothingItem {
+  id              String       @id @default(cuid())
+  userId          String
+  wardrobeId      String
+  name            String       @db.VarChar(160)
+  imageUrl        String
+  imageProviderId String?
+  category        String       @db.VarChar(80)
+  subcategory     String?      @db.VarChar(80)
+  colors          String[]     @default([])
+  pattern         String?      @db.VarChar(80)
+  material        String?      @db.VarChar(80)
+  seasons         String[]     @default([])
+  occasions       String[]     @default([])
+  aesthetics      String[]     @default([])
+  brand           String?      @db.VarChar(100)
+  notes           String?      @db.VarChar(1000)
+  sleeveStyle     String?      @db.VarChar(80)
+  favorite        Boolean      @default(false)
+  archived        Boolean      @default(false)
+  aiMetadata      Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wardrobe        Wardrobe     @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  outfitItems     OutfitItem[]
+
+  @@index([userId, archived, createdAt])
+  @@index([userId, favorite])
+  @@index([wardrobeId, category])
+}
+
+model Outfit {
+  id            String       @id @default(cuid())
+  userId        String
+  title         String       @db.VarChar(160)
+  occasion      String?      @db.VarChar(80)
+  aesthetic     String?      @db.VarChar(100)
+  season        String?      @db.VarChar(80)
+  weather       String?      @db.VarChar(160)
+  explanation   String?      @db.VarChar(2000)
+  colorPalette  String[]     @default([])
+  stylingTips   String[]     @default([])
+  source        OutfitSource @default(MANUAL)
+  provider      String?      @db.VarChar(80)
+  providerModel String?      @db.VarChar(120)
+  favorite      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items         OutfitItem[]
+  saves         SavedOutfit[]
+
+  @@index([userId, createdAt])
+  @@index([userId, favorite])
+}
+
+model OutfitItem {
+  id             String       @id @default(cuid())
+  outfitId       String
+  clothingItemId String
+  slot           String?      @db.VarChar(40)
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  outfit         Outfit       @relation(fields: [outfitId], references: [id], onDelete: Cascade)
+  clothingItem   ClothingItem @relation(fields: [clothingItemId], references: [id], onDelete: Restrict)
+
+  @@unique([outfitId, clothingItemId])
+  @@index([clothingItemId])
+}
+
+model SavedOutfit {
+  id         String   @id @default(cuid())
+  userId     String
+  outfitId   String
+  collection String?  @db.VarChar(100)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outfit     Outfit   @relation(fields: [outfitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, outfitId])
+  @@index([userId, collection])
+}
+
+model AIRecommendation {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   @db.VarChar(80)
+  title       String   @db.VarChar(160)
+  explanation String?  @db.VarChar(2000)
+  payload     Json
+  dismissedAt DateTime?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+}
+
+model AIStylingHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  requestType String   @db.VarChar(80)
+  input       Json
+  output      Json
+  provider    String?  @db.VarChar(80)
+  model       String?  @db.VarChar(120)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, requestType, createdAt])
+}
+
+model InspirationImage {
+  id              String             @id @default(cuid())
+  userId          String
+  imageUrl        String
+  imageProviderId String?
+  sourceUrl       String?
+  title           String?            @db.VarChar(160)
+  analysis        Json?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matches         InspirationMatch[]
+
+  @@index([userId, createdAt])
+}
+
+model InspirationMatch {
+  id                 String           @id @default(cuid())
+  inspirationImageId String
+  userId             String
+  similarity         Int
+  matchedItems       Json
+  missingItems       Json
+  recreation         Json
+  createdAt          DateTime         @default(now())
+  inspirationImage   InspirationImage @relation(fields: [inspirationImageId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model ShoppingRecommendation {
+  id            String          @id @default(cuid())
+  userId        String
+  title         String          @db.VarChar(160)
+  brand         String?         @db.VarChar(100)
+  category      String?         @db.VarChar(80)
+  imageUrl      String?
+  reason        String?         @db.VarChar(1000)
+  similarity    Int?
+  productData   Json?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offers        RetailerOffer[]
+  wishlistItems WishlistItem[]
+
+  @@index([userId, createdAt])
+}
+
+model RetailerOffer {
+  id                       String                 @id @default(cuid())
+  shoppingRecommendationId String
+  store                    String                 @db.VarChar(100)
+  productUrl               String
+  price                    Decimal                @db.Decimal(10, 2)
+  currency                 String                 @default("INR") @db.Char(3)
+  discount                 Int?
+  rating                   Float?
+  availability             String?                @db.VarChar(80)
+  observedAt               DateTime               @default(now())
+  recommendation           ShoppingRecommendation @relation(fields: [shoppingRecommendationId], references: [id], onDelete: Cascade)
+
+  @@index([shoppingRecommendationId, price])
+}
+
+model WishlistItem {
+  id                       String                 @id @default(cuid())
+  userId                   String
+  shoppingRecommendationId String
+  createdAt                DateTime               @default(now())
+  user                     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendation           ShoppingRecommendation @relation(fields: [shoppingRecommendationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shoppingRecommendationId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(SYSTEM)
+  title     String           @db.VarChar(160)
+  message   String           @db.VarChar(1000)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model UserActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   @db.VarChar(80)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

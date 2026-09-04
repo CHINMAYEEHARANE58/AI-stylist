@@ -1,0 +1,20 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.6.1
+2 info using node@v24.10.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npmrc
+5 silly config load:file:/Users/chinmayeedeepakharane/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm ls @prisma/client cookie-parser multer
+8 verbose argv "ls" "--cache" ".npm-cache" "--workspace" "closetai-server" "@prisma/client" "cookie-parser" "multer" "--depth" "0"
+9 verbose logfile logs-max:10 dir:/Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npm-cache/_logs/2026-09-04T19_16_17_530Z-
+10 verbose logfile /Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npm-cache/_logs/2026-09-04T19_16_17_530Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: apps/server
+14 verbose cwd /Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist
+15 verbose os Darwin 25.6.0
+16 verbose node v24.10.0
+17 verbose npm  v11.6.1
+18 verbose exit 1
+19 verbose code 1

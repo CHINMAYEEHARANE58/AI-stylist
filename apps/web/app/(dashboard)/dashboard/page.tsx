@@ -7,6 +7,7 @@ import {
   ArrowRight, CloudSun, Heart, Plus, Shirt,
   ShoppingBag, Sparkles, TrendingUp, Zap,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +17,9 @@ import { OutfitCard } from "@/components/ui/outfit-card";
 import { AIRecommendationCard } from "@/components/ui/ai-recommendation-card";
 import {
   outfitSuggestions, shoppingRecommendations,
-  wardrobeItems, analytics, notifications,
+  wardrobeItems, analytics, notifications as mockNotifications,
 } from "@/lib/mock-data";
+import { insightsApi, shoppingApi, type NotificationApi } from "@/lib/api-client";
 import { useAppStore } from "@/store/app-store";
 
 const stagger = {
@@ -30,7 +32,37 @@ const fadeUp = {
 };
 
 export default function DashboardPage() {
-  const { savedOutfitIds, toggleSavedOutfit, wishlistIds, toggleWishlist, user } = useAppStore();
+  const { user } = useAppStore();
+
+  // Real data from backend
+  const { data: dashData } = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: () => insightsApi.dashboard(),
+    staleTime: 30_000,
+  });
+  const { data: shopData } = useQuery({
+    queryKey: ["shopping", {}],
+    queryFn: () => shoppingApi.list({ perPage: 3 }),
+    staleTime: 60_000,
+  });
+
+  const stats = dashData?.data?.stats;
+  const recentItems = dashData?.data?.recentWardrobeItems ?? [];
+  const liveNotifications = dashData?.data?.notifications ?? [];
+  const shopItems = shopData?.data ?? [];
+
+  // Fallback to mock data when backend not yet seeded
+  const displayWardrobeCount = stats?.wardrobeItems ?? wardrobeItems.length;
+  const displaySavedCount    = stats?.savedOutfits ?? 1;
+  const displayNotifications = liveNotifications.length > 0 ? liveNotifications : mockNotifications.slice(0, 4).map((n) => ({ ...n, createdAt: "" }));
+  const displayWardrobeItems = recentItems.length > 0
+    ? recentItems.slice(0, 4).map((i) => ({ id: i.id, name: i.name, imageUrl: i.imageUrl, brand: i.brand ?? "" }))
+    : wardrobeItems.slice(0, 4).map((i) => ({ id: i.id, name: i.name, imageUrl: i.image, brand: i.brand }));
+  const displayShop = shopItems.slice(0, 3).map((i) => ({
+    id: i.id, title: i.title, price: i.price, originalPrice: i.originalPrice,
+    rating: i.rating, brand: i.brand, store: i.brand, similarity: i.similarity,
+    image: i.imageUrl, url: "#",
+  }));
 
   return (
     <DashboardShell
@@ -58,8 +90,8 @@ export default function DashboardPage() {
           </div>
 
           {[
-            { label: "Wardrobe items",    value: wardrobeItems.length, icon: Shirt,       href: "/wardrobe",  color: "text-blue-500" },
-            { label: "Saved outfits",     value: savedOutfitIds.length, icon: Heart,      href: "/outfits",   color: "text-rose-500" },
+            { label: "Wardrobe items",    value: displayWardrobeCount, icon: Shirt,   href: "/wardrobe",  color: "text-blue-500" },
+            { label: "Saved outfits",     value: displaySavedCount,    icon: Heart,   href: "/outfits",   color: "text-rose-500" },
           ].map(({ label, value, icon: Icon, href, color }) => (
             <Link key={label} href={href} className="group">
               <div className="flex h-full flex-col justify-between rounded-3xl border border-border/60 bg-card p-6 shadow-card transition-all hover:shadow-card-hover hover:-translate-y-0.5">
@@ -114,12 +146,12 @@ export default function DashboardPage() {
             </Button>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4">
-            {wardrobeItems.slice(0, 4).map((item) => (
+            {displayWardrobeItems.map((item) => (
               <Link key={item.id} href={`/wardrobe/${item.id}`} className="group">
                 <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
                   <div className="relative aspect-[3/4] overflow-hidden bg-muted">
                     <Image
-                      src={item.image}
+                      src={item.imageUrl}
                       alt={item.name}
                       fill
                       className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -164,10 +196,10 @@ export default function DashboardPage() {
                 <p className="text-label-sm mb-1">Updates</p>
                 <p className="text-display-sm">Recent alerts</p>
               </div>
-              <Badge variant="destructive">{notifications.filter((n) => !n.read).length}</Badge>
+              <Badge variant="destructive">{displayNotifications.filter((n) => !n.read).length}</Badge>
             </div>
             <div className="space-y-2.5">
-              {notifications.slice(0, 4).map((n) => (
+              {displayNotifications.slice(0, 4).map((n) => (
                 <div
                   key={n.id}
                   className={`rounded-2xl px-4 py-3 text-sm ${
@@ -197,12 +229,12 @@ export default function DashboardPage() {
             </Button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {shoppingRecommendations.slice(0, 3).map((item, i) => (
+            {(displayShop.length > 0 ? displayShop : shoppingRecommendations.slice(0, 3)).map((item, i) => (
               <AIRecommendationCard
                 key={item.id}
                 item={item}
-                isWishlisted={wishlistIds.includes(item.id)}
-                onToggleWishlist={toggleWishlist}
+                isWishlisted={false}
+                onToggleWishlist={() => {}}
                 index={i}
               />
             ))}

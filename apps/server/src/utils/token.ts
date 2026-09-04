@@ -4,7 +4,7 @@ import type { AuthPayload } from '../types/express';
 
 export function signToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    expiresIn: env.ACCESS_TOKEN_TTL as jwt.SignOptions['expiresIn'],
   });
 }
 

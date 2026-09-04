@@ -1,19 +1,20 @@
 import { Router } from 'express';
-import { z } from 'zod';
-import { chat, getEventStyling } from '../controllers/stylistController';
+import { chat } from '../controllers/stylistController';
 import { requireAuth } from '../middleware/requireAuth';
 import { asyncHandler } from '../utils/asyncHandler';
-import { validate } from '../utils/validate';
+import rateLimit from 'express-rate-limit';
 
-const chatSchema = z.object({
-  message: z.string().min(1).max(500),
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many AI requests. Please wait a moment.' },
 });
 
 const router = Router();
-
 router.use(requireAuth);
 
-router.post('/chat',  validate(chatSchema), asyncHandler(chat));
-router.get( '/event', asyncHandler(getEventStyling));
+router.post('/chat', aiLimiter, asyncHandler(chat));
 
 export default router;

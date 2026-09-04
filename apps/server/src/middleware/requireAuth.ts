@@ -1,20 +1,21 @@
 import type { NextFunction, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
-import { env } from '../config/env';
 import { AppError } from '../utils/AppError';
 import type { AuthPayload } from '../types/express';
+import { ACCESS_COOKIE } from '../services/sessionService';
+import { verifyToken } from '../utils/token';
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length)
+    : req.cookies?.[ACCESS_COOKIE] as string | undefined;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!token) {
     return next(new AppError('Authorization token missing.', 401));
   }
 
-  const token = authHeader.replace('Bearer ', '');
-
   try {
-    const decoded = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
+    const decoded = verifyToken(token) as AuthPayload;
     req.user = decoded;
     next();
   } catch (err) {

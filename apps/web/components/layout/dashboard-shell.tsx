@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   BarChart3, Compass, LayoutDashboard, Shirt, ShoppingBag,
-  Sparkles, User2, Settings, Bell, ChevronRight,
+  Sparkles, User2, Settings, Bell, ChevronRight, LogOut,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAppStore } from "@/store/app-store";
+import { authApi } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { insightsApi } from "@/lib/api-client";
+import { getInitials } from "@/lib/utils";
 
 const navLinks = [
   { href: "/dashboard",       label: "Dashboard",  icon: LayoutDashboard },
@@ -33,6 +38,25 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children, heading, subheading }: DashboardShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAppStore();
+
+  // Live unread notification count
+  const { data: dashData } = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: () => insightsApi.dashboard(),
+    staleTime: 30_000,
+  });
+  const unreadCount = dashData?.data?.stats?.unreadNotifications ?? 0;
+
+  async function handleLogout() {
+    try { await authApi.logout(); } catch { /* noop */ }
+    logout();
+    router.push("/login");
+  }
+
+  const displayName = user?.name ?? user?.profile?.firstName ?? "You";
+  const initials = getInitials(displayName);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -75,7 +99,9 @@ export function DashboardShell({ children, heading, subheading }: DashboardShell
             >
               <Bell className="h-4 w-4" />
               Notifications
-              <Badge variant="destructive" size="sm" className="ml-auto">3</Badge>
+              {unreadCount > 0 && (
+                <Badge variant="destructive" size="sm" className="ml-auto">{unreadCount}</Badge>
+              )}
             </Link>
             <Link
               href="/settings"
@@ -89,13 +115,29 @@ export function DashboardShell({ children, heading, subheading }: DashboardShell
           <div className="border-t border-border/50 p-4">
             <div className="flex items-center gap-3">
               <Avatar size="sm">
-                <AvatarFallback>MK</AvatarFallback>
+                {user?.profile?.imageUrl && <AvatarImage src={user.profile.imageUrl} alt={displayName} />}
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">Maya Kapoor</p>
-                <p className="truncate text-xs text-muted-foreground">maya@closetai.com</p>
+                <p className="truncate text-sm font-medium">{displayName}</p>
+                <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
               </div>
-              <ThemeToggle />
+              <div className="flex items-center gap-1">
+                <ThemeToggle />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      aria-label="Log out"
+                    >
+                      <LogOut className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Log out</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
           </div>
         </aside>

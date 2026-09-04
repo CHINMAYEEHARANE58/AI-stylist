@@ -1,34 +1,20 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import {
-  deleteOutfit, generateOutfitRecommendations, getSavedOutfits,
-  getWeatherStyling, saveOutfit, styleSingleItem,
+  generateOutfitRecommendations, getSavedOutfits, saveOutfit,
+  deleteSavedOutfit, styleSingleItem, toggleOutfitFavorite, getCollections,
 } from '../controllers/outfitController';
 import { requireAuth } from '../middleware/requireAuth';
 import { asyncHandler } from '../utils/asyncHandler';
-import { validate } from '../utils/validate';
-
-const generateSchema = z.object({
-  occasion:   z.string().optional(),
-  weather:    z.string().optional(),
-  mood:       z.string().optional(),
-  anchorItem: z.string().optional(),
-  notes:      z.string().max(500).optional(),
-});
-
-const styleItemSchema = z.object({
-  itemName: z.string().min(1),
-});
 
 const router = Router();
-
 router.use(requireAuth);
 
-router.get( '/saved',            asyncHandler(getSavedOutfits));
-router.post('/generate',         validate(generateSchema),    asyncHandler(generateOutfitRecommendations));
-router.post('/style-item',       validate(styleItemSchema),   asyncHandler(styleSingleItem));
-router.get( '/weather',          asyncHandler(getWeatherStyling));
-router.post('/',                 asyncHandler(saveOutfit));
-router.delete('/:id',            asyncHandler(deleteOutfit));
+router.get( '/saved',              asyncHandler(getSavedOutfits));
+router.get( '/collections',        asyncHandler(getCollections));
+router.post('/generate',           asyncHandler(generateOutfitRecommendations));
+router.post('/style-item',         asyncHandler(styleSingleItem));
+router.post('/',                   asyncHandler(saveOutfit));
+router.delete('/saved/:id',        asyncHandler(deleteSavedOutfit));
+router.post('/:id/favorite',       asyncHandler(toggleOutfitFavorite));
 
 export default router;

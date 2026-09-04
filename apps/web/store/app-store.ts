@@ -2,28 +2,29 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { ClothingItem, OutfitSuggestion, ShoppingRecommendation } from "@/lib/types";
+import type { ClothingItemApi, AuthUser } from "@/lib/api-client";
 
 /* ── Auth slice ─────────────────────────────────────────── */
 interface AuthState {
-  user: { name: string; email: string; avatar?: string } | null;
+  user: AuthUser | null;
   isAuthenticated: boolean;
-  login: (name: string, email: string) => void;
+  login: (user: AuthUser) => void;
   logout: () => void;
+  setUser: (user: AuthUser) => void;
 }
 
 /* ── Wardrobe slice ─────────────────────────────────────── */
 interface WardrobeState {
+  /** Local optimistic favorite state — synced from server */
   favoriteIds: string[];
   selectedItemId: string | null;
-  toggleFavorite: (id: string) => void;
+  setFavoriteIds: (ids: string[]) => void;
+  toggleFavoriteLocal: (id: string) => void;
   setSelectedItem: (id: string | null) => void;
 }
 
 /* ── Outfits slice ──────────────────────────────────────── */
 interface OutfitsState {
-  savedOutfitIds: string[];
-  toggleSavedOutfit: (id: string) => void;
   generatorOccasion: string;
   generatorWeather: string;
   generatorMood: string;
@@ -33,7 +34,8 @@ interface OutfitsState {
 /* ── Shopping slice ─────────────────────────────────────── */
 interface ShoppingState {
   wishlistIds: string[];
-  toggleWishlist: (id: string) => void;
+  setWishlistIds: (ids: string[]) => void;
+  toggleWishlistLocal: (id: string) => void;
 }
 
 /* ── UI slice ───────────────────────────────────────────── */
@@ -52,17 +54,19 @@ type AppState = AuthState & WardrobeState & OutfitsState & ShoppingState & UISta
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       /* ── auth ── */
-      user: { name: "Maya Kapoor", email: "maya@closetai.com" },
-      isAuthenticated: true,
-      login: (name, email) => set({ user: { name, email }, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
+      user: null,
+      isAuthenticated: false,
+      login: (user) => set({ user, isAuthenticated: true }),
+      logout: () => set({ user: null, isAuthenticated: false, favoriteIds: [], wishlistIds: [] }),
+      setUser: (user) => set({ user, isAuthenticated: true }),
 
       /* ── wardrobe ── */
-      favoriteIds: ["item-1", "item-2"],
+      favoriteIds: [],
       selectedItemId: null,
-      toggleFavorite: (id) =>
+      setFavoriteIds: (ids) => set({ favoriteIds: ids }),
+      toggleFavoriteLocal: (id) =>
         set((s) => ({
           favoriteIds: s.favoriteIds.includes(id)
             ? s.favoriteIds.filter((i) => i !== id)
@@ -71,21 +75,16 @@ export const useAppStore = create<AppState>()(
       setSelectedItem: (id) => set({ selectedItemId: id }),
 
       /* ── outfits ── */
-      savedOutfitIds: ["outfit-1"],
-      toggleSavedOutfit: (id) =>
-        set((s) => ({
-          savedOutfitIds: s.savedOutfitIds.includes(id)
-            ? s.savedOutfitIds.filter((i) => i !== id)
-            : [...s.savedOutfitIds, id],
-        })),
       generatorOccasion: "",
       generatorWeather: "",
       generatorMood: "",
-      setGeneratorField: (field, value) => set({ [`generator${field.charAt(0).toUpperCase() + field.slice(1)}`]: value }),
+      setGeneratorField: (field, value) =>
+        set({ [`generator${field.charAt(0).toUpperCase() + field.slice(1)}`]: value }),
 
       /* ── shopping ── */
-      wishlistIds: ["shop-1"],
-      toggleWishlist: (id) =>
+      wishlistIds: [],
+      setWishlistIds: (ids) => set({ wishlistIds: ids }),
+      toggleWishlistLocal: (id) =>
         set((s) => ({
           wishlistIds: s.wishlistIds.includes(id)
             ? s.wishlistIds.filter((i) => i !== id)
@@ -105,19 +104,21 @@ export const useAppStore = create<AppState>()(
     {
       name: "closetai-store",
       partialize: (s) => ({
-        favoriteIds: s.favoriteIds,
-        savedOutfitIds: s.savedOutfitIds,
-        wishlistIds: s.wishlistIds,
-        wardrobeView: s.wardrobeView,
         user: s.user,
         isAuthenticated: s.isAuthenticated,
+        wardrobeView: s.wardrobeView,
+        favoriteIds: s.favoriteIds,
+        wishlistIds: s.wishlistIds,
       }),
     },
   ),
 );
 
 /* ── Convenience selectors ──────────────────────────────── */
-export const selectFavorites = (s: AppState) => s.favoriteIds;
-export const selectSavedOutfits = (s: AppState) => s.savedOutfitIds;
-export const selectWishlist = (s: AppState) => s.wishlistIds;
 export const selectUser = (s: AppState) => s.user;
+export const selectIsAuthenticated = (s: AppState) => s.isAuthenticated;
+export const selectFavorites = (s: AppState) => s.favoriteIds;
+export const selectWishlist = (s: AppState) => s.wishlistIds;
+
+/* ── Unused ClothingItemApi type import kept for colocation ── */
+export type { ClothingItemApi };

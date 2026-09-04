@@ -1,15 +1,43 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Chrome, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { authApi } from "@/lib/api-client";
+import { useAppStore } from "@/store/app-store";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login } = useAppStore();
+
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password) { setError("Please enter your email and password."); return; }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await authApi.login({ email, password });
+      login(res.data.user);
+      const from = searchParams.get("from") ?? "/dashboard";
+      router.push(from);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <motion.div
@@ -29,12 +57,10 @@ export default function LoginPage() {
           </Link>
         </p>
 
-        {/* Google */}
-        <Button variant="outline" className="mt-8 w-full gap-3" asChild>
-          <a href="#">
-            <Chrome className="h-4 w-4" />
-            Continue with Google
-          </a>
+        {/* Google placeholder */}
+        <Button variant="outline" className="mt-8 w-full gap-3" disabled>
+          <Chrome className="h-4 w-4" />
+          Continue with Google
         </Button>
 
         <div className="my-6 flex items-center gap-3">
@@ -43,13 +69,23 @@ export default function LoginPage() {
           <Separator className="flex-1" />
         </div>
 
-        {/* Fields */}
-        <div className="space-y-4">
+        {/* Form */}
+        <form onSubmit={handleLogin} className="space-y-4">
+          {error && (
+            <p className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
           <Input
             type="email"
             placeholder="Email address"
             leftIcon={<Mail className="h-4 w-4" />}
             label="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
           />
           <div>
             <Input
@@ -57,6 +93,10 @@ export default function LoginPage() {
               placeholder="Password"
               leftIcon={<Lock className="h-4 w-4" />}
               label="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
               rightIcon={
                 <button
                   type="button"
@@ -74,11 +114,11 @@ export default function LoginPage() {
               </Link>
             </div>
           </div>
-        </div>
 
-        <Button className="mt-6 w-full" size="lg" asChild>
-          <Link href="/dashboard">Log in to ClosetAI</Link>
-        </Button>
+          <Button type="submit" className="mt-2 w-full" size="lg" loading={loading}>
+            Log in to ClosetAI
+          </Button>
+        </form>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           By continuing you agree to our{" "}

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { env } from './config/env';
 import { connectDatabase } from './config/db';
 import { logger } from './config/logger';
@@ -22,6 +23,7 @@ async function bootstrap(): Promise<void> {
   // ── Body parsers ──────────────────────────────────────────────────────
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(cookieParser());
 
   // ── HTTP request logging ──────────────────────────────────────────────
   app.use(requestLogger);

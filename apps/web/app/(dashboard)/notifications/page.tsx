@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, CheckCheck, CloudSun, ShoppingBag, Sparkles, TrendingUp, X } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FilterChips } from "@/components/ui/filter-chips";
-import { notifications } from "@/lib/mock-data";
-import type { Notification } from "@/lib/types";
+import { insightsApi, type NotificationApi } from "@/lib/api-client";
+import { notifications as mockNotifications } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const TYPE_ICONS = {
@@ -19,7 +20,7 @@ const TYPE_ICONS = {
   system:  <Bell className="h-4 w-4" />,
 };
 
-const TYPE_COLORS: Record<Notification["type"], string> = {
+const TYPE_COLORS: Record<string, string> = {
   outfit:  "bg-brand/10 text-brand-dark",
   weather: "bg-blue-500/10 text-blue-600",
   sale:    "bg-success/10 text-success",
@@ -27,29 +28,48 @@ const TYPE_COLORS: Record<Notification["type"], string> = {
   system:  "bg-muted text-muted-foreground",
 };
 
-const FILTERS = ["All", "Outfits", "Weather", "Sales", "Trends"];
+const FILTERS = ["Outfits", "Weather", "Sales", "Trends"];
 
 export default function NotificationsPage() {
-  const [items, setItems] = useState<Notification[]>(notifications);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string[]>([]);
 
-  const unreadCount = items.filter((n) => !n.read).length;
-
-  const filtered = items.filter((n) => {
-    if (!filter.length) return true;
-    const map: Record<string, Notification["type"]> = {
-      Outfits: "outfit", Weather: "weather", Sales: "sale", Trends: "trend",
-    };
-    return filter.some((f) => map[f] === n.type);
+  const { data, isLoading } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => insightsApi.notifications(),
+    staleTime: 15_000,
   });
 
-  function markAllRead() {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-  }
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => insightsApi.markRead(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications", "dashboard-summary"] }),
+  });
 
-  function dismiss(id: string) {
-    setItems((prev) => prev.filter((n) => n.id !== id));
-  }
+  const markAllMutation = useMutation({
+    mutationFn: () => insightsApi.markAllRead(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications", "dashboard-summary"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => insightsApi.deleteNotification(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
+  // Use live data or fall back to mock
+  const rawItems: NotificationApi[] = data?.data?.length
+    ? data.data
+    : mockNotifications.map((n) => ({ ...n, title: n.message.slice(0, 40), createdAt: new Date().toISOString() }));
+
+  const unreadCount = rawItems.filter((n) => !n.read).length;
+
+  const filterMap: Record<string, string> = {
+    Outfits: "outfit", Weather: "weather", Sales: "sale", Trends: "trend",
+  };
+
+  const filtered = rawItems.filter((n) => {
+    if (!filter.length) return true;
+    return filter.some((f) => filterMap[f] === n.type);
+  });
 
   return (
     <DashboardShell
@@ -62,14 +82,14 @@ export default function NotificationsPage() {
           {unreadCount > 0 && <Badge variant="destructive">{unreadCount} unread</Badge>}
         </div>
         {unreadCount > 0 && (
-          <Button variant="ghost" size="sm" className="gap-2" onClick={markAllRead}>
+          <Button variant="ghost" size="sm" className="gap-2" onClick={() => markAllMutation.mutate()} loading={markAllMutation.isPending}>
             <CheckCheck className="h-4 w-4" /> Mark all as read
           </Button>
         )}
       </div>
 
       <FilterChips
-        options={FILTERS.slice(1)}
+        options={FILTERS}
         selected={filter}
         onChange={setFilter}
       />
@@ -94,9 +114,9 @@ export default function NotificationsPage() {
               {/* Icon */}
               <div className={cn(
                 "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-                TYPE_COLORS[n.type],
+                TYPE_COLORS[n.type] ?? TYPE_COLORS.system,
               )}>
-                {TYPE_ICONS[n.type]}
+                {TYPE_ICONS[n.type as keyof typeof TYPE_ICONS] ?? TYPE_ICONS.system}
               </div>
 
               {/* Content */}
@@ -110,7 +130,7 @@ export default function NotificationsPage() {
                 {!n.read && (
                   <button
                     type="button"
-                    onClick={() => setItems((prev) => prev.map((i) => i.id === n.id ? { ...i, read: true } : i))}
+                    onClick={() => markReadMutation.mutate(n.id)}
                     className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     aria-label="Mark as read"
                   >
@@ -119,7 +139,7 @@ export default function NotificationsPage() {
                 )}
                 <button
                   type="button"
-                  onClick={() => dismiss(n.id)}
+                  onClick={() => deleteMutation.mutate(n.id)}
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   aria-label="Dismiss"
                 >

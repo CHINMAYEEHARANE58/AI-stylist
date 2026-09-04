@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@/app/globals.css";
 import { ThemeProvider } from "@/components/ui/theme-provider";
+import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title:       { default: "ClosetAI — Your AI Personal Stylist", template: "%s | ClosetAI" },
@@ -32,7 +33,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange={false}
         >
-          {children}
+          <Providers>
+            {children}
+          </Providers>
         </ThemeProvider>
       </body>
     </html>

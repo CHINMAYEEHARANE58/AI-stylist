@@ -1,0 +1,91 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.6.1
+2 info using node@v24.10.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npmrc
+5 silly config load:file:/Users/chinmayeedeepakharane/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm install @prisma/client@^6.14.0 cookie-parser multer
+8 verbose argv "install" "--cache" ".npm-cache" "--workspace" "closetai-server" "@prisma/client@^6.14.0" "cookie-parser" "multer"
+9 verbose logfile logs-max:10 dir:/Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npm-cache/_logs/2026-09-04T19_15_43_874Z-
+10 verbose logfile /Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npm-cache/_logs/2026-09-04T19_15_43_874Z-debug-0.log
+11 silly logfile done cleaning log files
+12 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with ENOTFOUND
+13 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+14 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: apps/server
+15 silly idealTree buildDeps
+16 silly fetch manifest @prisma/client@^6.14.0
+17 silly packumentCache full:https://registry.npmjs.org/@prisma%2fclient cache-miss
+18 http fetch GET https://registry.npmjs.org/@prisma%2fclient attempt 1 failed with ENOTFOUND
+19 http fetch GET https://registry.npmjs.org/npm attempt 2 failed with ENOTFOUND
+20 http fetch GET https://registry.npmjs.org/@prisma%2fclient attempt 2 failed with ENOTFOUND
+21 http fetch GET https://registry.npmjs.org/npm attempt 3 failed with ENOTFOUND
+22 http fetch GET https://registry.npmjs.org/@prisma%2fclient attempt 3 failed with ENOTFOUND
+23 silly fetch manifest cookie-parser@*
+24 silly packumentCache full:https://registry.npmjs.org/cookie-parser cache-miss
+25 http fetch GET https://registry.npmjs.org/cookie-parser attempt 1 failed with ENOTFOUND
+26 http fetch GET https://registry.npmjs.org/cookie-parser attempt 2 failed with ENOTFOUND
+27 http fetch GET https://registry.npmjs.org/cookie-parser attempt 3 failed with ENOTFOUND
+28 silly fetch manifest multer@*
+29 silly packumentCache full:https://registry.npmjs.org/multer cache-miss
+30 http cache https://registry.npmjs.org/multer 15ms (cache hit)
+31 silly packumentCache full:https://registry.npmjs.org/multer set size:160592 disposed:false
+32 silly placeDep apps/server @prisma/client@ OK for: closetai-server@1.0.0 want: ^6.14.0
+33 silly placeDep apps/server cookie-parser@ OK for: closetai-server@1.0.0 want: *
+34 silly placeDep ROOT multer@2.3.0 OK for: closetai-server@1.0.0 want: *
+35 silly fetch manifest busboy@^1.6.0
+36 silly packumentCache full:https://registry.npmjs.org/busboy cache-miss
+37 silly fetch manifest append-field@^1.0.0
+38 silly packumentCache full:https://registry.npmjs.org/append-field cache-miss
+39 silly fetch manifest concat-stream@^2.0.0
+40 silly packumentCache full:https://registry.npmjs.org/concat-stream cache-miss
+41 http cache https://registry.npmjs.org/append-field 4ms (cache hit)
+42 silly packumentCache full:https://registry.npmjs.org/append-field set size:7798 disposed:false
+43 http cache https://registry.npmjs.org/busboy 5ms (cache hit)
+44 silly packumentCache full:https://registry.npmjs.org/busboy set size:78901 disposed:false
+45 http cache https://registry.npmjs.org/concat-stream 6ms (cache hit)
+46 silly packumentCache full:https://registry.npmjs.org/concat-stream set size:63783 disposed:false
+47 silly placeDep ROOT append-field@1.0.0 OK for: multer@2.3.0 want: ^1.0.0
+48 silly placeDep ROOT busboy@1.6.0 OK for: multer@2.3.0 want: ^1.6.0
+49 silly placeDep ROOT concat-stream@2.0.0 OK for: multer@2.3.0 want: ^2.0.0
+50 silly fetch manifest streamsearch@^1.1.0
+51 silly packumentCache full:https://registry.npmjs.org/streamsearch cache-miss
+52 silly fetch manifest buffer-from@^1.0.0
+53 silly packumentCache full:https://registry.npmjs.org/buffer-from cache-miss
+54 silly fetch manifest typedarray@^0.0.6
+55 silly packumentCache full:https://registry.npmjs.org/typedarray cache-miss
+56 http cache https://registry.npmjs.org/streamsearch 4ms (cache hit)
+57 silly packumentCache full:https://registry.npmjs.org/streamsearch set size:27372 disposed:false
+58 http cache https://registry.npmjs.org/typedarray 4ms (cache hit)
+59 silly packumentCache full:https://registry.npmjs.org/typedarray set size:18469 disposed:false
+60 http cache https://registry.npmjs.org/buffer-from 6ms (cache hit)
+61 silly packumentCache full:https://registry.npmjs.org/buffer-from set size:15463 disposed:false
+62 silly placeDep ROOT streamsearch@1.1.0 OK for: busboy@1.6.0 want: ^1.1.0
+63 silly placeDep ROOT buffer-from@1.1.2 OK for: concat-stream@2.0.0 want: ^1.0.0
+64 silly placeDep ROOT typedarray@0.0.6 OK for: concat-stream@2.0.0 want: ^0.0.6
+65 verbose type system
+66 verbose stack FetchError: request to https://registry.npmjs.org/@prisma%2fclient failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org
+66 verbose stack     at ClientRequest.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/minipass-fetch/lib/index.js:130:14)
+66 verbose stack     at ClientRequest.emit (node:events:508:28)
+66 verbose stack     at emitErrorEvent (node:_http_client:107:11)
+66 verbose stack     at _destroy (node:_http_client:954:9)
+66 verbose stack     at onSocketNT (node:_http_client:974:5)
+66 verbose stack     at process.processTicksAndRejections (node:internal/process/task_queues:91:21)
+67 error code ENOTFOUND
+68 error syscall getaddrinfo
+69 error errno ENOTFOUND
+70 error network request to https://registry.npmjs.org/@prisma%2fclient failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org
+71 error network This is a problem related to network connectivity.
+71 error network In most cases you are behind a proxy or have bad network settings.
+71 error network
+71 error network If you are behind a proxy, please make sure that the
+71 error network 'proxy' config is set properly.  See: 'npm help config'
+72 silly unfinished npm timer reify 1788549344052
+73 silly unfinished npm timer reify:loadTrees 1788549344052
+74 verbose cwd /Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist
+75 verbose os Darwin 25.6.0
+76 verbose node v24.10.0
+77 verbose npm  v11.6.1
+78 verbose exit 1
+79 verbose code 1
+80 error A complete log of this run can be found in: /Users/chinmayeedeepakharane/Documents/AI stylist/AI-stylist/.npm-cache/_logs/2026-09-04T19_15_43_874Z-debug-0.log
