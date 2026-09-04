@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env.local
+apps/web/.next
+apps/server/dist
+*.tsbuildinfo
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

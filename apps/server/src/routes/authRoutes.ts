@@ -1,0 +1,35 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import {
+  forgotPassword, getMe, googleAuth, login, signup,
+} from '../controllers/authController';
+import { requireAuth } from '../middleware/requireAuth';
+import { authLimiter } from '../middleware/rateLimiter';
+import { asyncHandler } from '../utils/asyncHandler';
+import { validate } from '../utils/validate';
+
+const signupSchema = z.object({
+  name:     z.string().min(2).max(100),
+  email:    z.string().email(),
+  password: z.string().min(8).max(128),
+  profile:  z.record(z.unknown()).optional(),
+});
+
+const loginSchema = z.object({
+  email:    z.string().email(),
+  password: z.string().min(1),
+});
+
+const forgotSchema = z.object({
+  email: z.string().email(),
+});
+
+const router = Router();
+
+router.post('/signup',          authLimiter, validate(signupSchema),  asyncHandler(signup));
+router.post('/login',           authLimiter, validate(loginSchema),   asyncHandler(login));
+router.post('/forgot-password', authLimiter, validate(forgotSchema),  asyncHandler(forgotPassword));
+router.post('/google',          authLimiter,                          asyncHandler(googleAuth));
+router.get( '/me',              requireAuth,                          asyncHandler(getMe));
+
+export default router;

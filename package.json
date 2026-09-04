@@ -1,0 +1,19 @@
+{
+  "name": "closetai-platform",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/web",
+    "apps/server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace web\" \"npm run dev --workspace closetai-server\"",
+    "build": "npm run build --workspace web && npm run build --workspace closetai-server",
+    "lint": "npm run lint --workspace web",
+    "typecheck": "npm run typecheck --workspace web",
+    "seed": "npm run seed --workspace closetai-server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
