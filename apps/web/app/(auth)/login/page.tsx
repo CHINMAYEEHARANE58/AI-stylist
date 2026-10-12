@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Chrome, Eye, EyeOff, Lock, Mail } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { authApi } from "@/lib/api-client";
+import { ApiError, authApi } from "@/lib/api-client";
 import { useAppStore } from "@/store/app-store";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAppStore();
@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState("");
+  const googleError = searchParams.get("error");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -33,6 +34,10 @@ export default function LoginPage() {
       const from = searchParams.get("from") ?? "/dashboard";
       router.push(from);
     } catch (err: unknown) {
+      if (err instanceof ApiError && err.code === "EMAIL_UNVERIFIED") {
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Login failed. Please try again.");
     } finally {
       setLoading(false);
@@ -58,7 +63,7 @@ export default function LoginPage() {
         </p>
 
         {/* Google placeholder */}
-        <Button variant="outline" className="mt-8 w-full gap-3" disabled>
+        <Button variant="outline" className="mt-8 w-full gap-3" type="button" onClick={() => { window.location.assign(authApi.googleSignInUrl()); }}>
           <Chrome className="h-4 w-4" />
           Continue with Google
         </Button>
@@ -71,9 +76,11 @@ export default function LoginPage() {
 
         {/* Form */}
         <form onSubmit={handleLogin} className="space-y-4">
-          {error && (
+          {(error || googleError) && (
             <p className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-              {error}
+              {error || (googleError === "google_signin_unavailable"
+                ? "Google sign-in is not available right now."
+                : "Google sign-in could not be completed. Please try again.")}
             </p>
           )}
 
@@ -127,5 +134,13 @@ export default function LoginPage() {
         </p>
       </div>
     </motion.div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-md" aria-busy="true" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

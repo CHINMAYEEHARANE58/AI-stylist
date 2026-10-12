@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import type { Application } from 'express';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { isAllowedOrigin } from '../config/origins';
 
 export function applySecurityMiddleware(app: Application): void {
   // ── Helmet (sets secure HTTP headers) ────────────────────────────────
@@ -22,7 +23,7 @@ export function applySecurityMiddleware(app: Application): void {
         callback(null, true);
         return;
       }
-      if (env.ALLOWED_ORIGINS.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         logger.warn(`CORS blocked origin: ${origin}`);

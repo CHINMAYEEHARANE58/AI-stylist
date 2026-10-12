@@ -11,11 +11,9 @@ import { Separator } from "@/components/ui/separator";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { profileAesthetics } from "@/lib/mock-data";
 import { authApi } from "@/lib/api-client";
-import { useAppStore } from "@/store/app-store";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { login } = useAppStore();
 
   const [showPassword, setShowPassword]         = useState(false);
   const [selectedAesthetics, setSelectedAesthetics] = useState<string[]>([]);
@@ -34,8 +32,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const res = await authApi.signup({ name, email, password, aesthetics: selectedAesthetics, sizes });
-      login(res.data.user);
-      router.push("/dashboard");
+      router.push(`/verify-email?email=${encodeURIComponent(res.data.email)}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Signup failed. Please try again.");
     } finally {
@@ -60,7 +57,7 @@ export default function SignupPage() {
           </Link>
         </p>
 
-        <Button variant="outline" className="mt-8 w-full gap-3" disabled>
+        <Button variant="outline" className="mt-8 w-full gap-3" type="button" onClick={() => { window.location.assign(authApi.googleSignInUrl()); }}>
           <Chrome className="h-4 w-4" />
           Continue with Google
         </Button>

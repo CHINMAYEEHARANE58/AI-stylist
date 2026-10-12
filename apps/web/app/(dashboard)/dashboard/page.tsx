@@ -32,7 +32,7 @@ const fadeUp = {
 };
 
 export default function DashboardPage() {
-  const { user } = useAppStore();
+  const { user, savedOutfitIds, toggleSavedOutfit } = useAppStore();
 
   // Real data from backend
   const { data: dashData } = useQuery({

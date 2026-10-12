@@ -5,9 +5,9 @@ ClosetAI is a modern AI-powered fashion styling platform that helps users digiti
 ## Stack
 
 - Frontend: Next.js, React, Tailwind CSS, Framer Motion, Zustand
-- Backend: Node.js, Express
-- Database: MongoDB with Mongoose schemas
-- Auth: JWT-ready endpoints with Google auth placeholder
+- Backend: Node.js, Express, TypeScript
+- Database: PostgreSQL with Prisma
+- Auth: password sign-up with email verification, secure cookie sessions, password resets, and optional Google OAuth
 - AI placeholders: outfit generation, wardrobe tagging, Pinterest matching, shopping recommendations
 
 ## Project Structure
@@ -38,7 +38,7 @@ ClosetAI is a modern AI-powered fashion styling platform that helps users digiti
 ## Features Included
 
 - Premium landing page with animated hero, feature grid, carousel, testimonials, and footer
-- Auth flows for sign up, login, forgot password, and Google sign-in placeholder
+- Auth flows for sign up, six-digit email verification, login, password reset, logout, persistent sessions, and Google sign-in
 - Digital wardrobe interface with search, favorites, upload/scan prompts, and item styling actions
 - AI outfit generator with occasion, weather, anchor-item, and chat stylist interactions
 - Pinterest-inspired outfit recreation studio with similarity matching and missing-piece suggestions
@@ -54,24 +54,25 @@ ClosetAI is a modern AI-powered fashion styling platform that helps users digiti
 
 ## Environment Variables
 
-Copy the root example file and update it:
+Copy the root example file and update it. The backend reads its environment from `apps/server/.env`; the frontend reads `apps/web/.env.local`.
 
 ```bash
-cp .env.example .env
+cp .env.example apps/server/.env
 ```
 
 Required keys:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:4000/api
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
-OPENAI_API_KEY=your-openai-api-key
-GEMINI_API_KEY=your-gemini-api-key
-MONGODB_URI=mongodb://127.0.0.1:27017/closetai
-JWT_SECRET=replace-with-a-secure-secret
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-WEATHER_API_KEY=your-weather-api-key
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/closetai?schema=public
+JWT_SECRET=replace-with-a-random-32-plus-character-secret
+FRONTEND_URL=http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
 ```
+
+For local development, email verification and reset links are printed only to the server console when `NODE_ENV=development` and no Resend credentials are configured. In production, configure both `EMAIL_FROM` and `RESEND_API_KEY`; the API deliberately fails closed instead of pretending to send an email.
+
+To enable Google, register the callback URL `http://localhost:4000/api/v1/auth/google/callback` with Google and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL`. Production values must use your HTTPS application URLs. The authorization flow uses state and PKCE.
 
 ## Getting Started
 
@@ -79,6 +80,7 @@ Install dependencies:
 
 ```bash
 npm install --cache .npm-cache
+npm run db:migrate --workspace closetai-server
 ```
 
 Run the frontend and backend together:
@@ -94,7 +96,7 @@ Frontend:
 Backend:
 
 - [http://localhost:4000](http://localhost:4000)
-- [http://localhost:4000/api/health](http://localhost:4000/api/health)
+- [http://localhost:4000/api/v1/health](http://localhost:4000/api/v1/health)
 
 ## Useful Scripts
 
@@ -103,16 +105,19 @@ npm run dev
 npm run build
 npm run typecheck
 npm run seed
+npm run test --workspace closetai-server
+npm run lint --workspace closetai-server
 ```
 
 ## API Overview
 
 Auth:
 
-- `POST /api/auth/signup`
-- `POST /api/auth/login`
-- `POST /api/auth/forgot-password`
-- `POST /api/auth/google`
+- `POST /api/v1/auth/signup` — creates an unverified account and sends a six-digit code
+- `POST /api/v1/auth/verify-email` and `POST /api/v1/auth/resend-verification`
+- `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, and `GET /api/v1/auth/me`
+- `POST /api/v1/auth/forgot-password` and `POST /api/v1/auth/reset-password`
+- `GET /api/v1/auth/google` and `GET /api/v1/auth/google/callback`
 
 Wardrobe:
 
@@ -156,9 +161,9 @@ Profile and Admin:
 
 ## Notes
 
-- The UI is intentionally built as a premium, production-style product scaffold with reusable components and responsive layouts.
-- AI, computer vision, Pinterest integration, Google OAuth, and live price aggregation are stubbed with clean placeholders so you can wire real providers next without refactoring the app structure.
-- The API continues to boot even if MongoDB is unavailable, which makes local UI development easier while wiring external services.
+- Authentication cookies are `HttpOnly` and `SameSite=Lax`; refresh-token records store only SHA-256 hashes. Browser-origin checks and CORS allow only configured origins in production.
+- OTP codes expire after 10 minutes, are resend-rate-limited for 60 seconds, are single-use, and allow at most five invalid attempts.
+- Database migrations are additive. Do not use Prisma reset against an environment that contains user data.
 
 ## Validation
 

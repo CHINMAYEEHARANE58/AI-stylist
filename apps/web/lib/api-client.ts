@@ -8,7 +8,7 @@
  * - Never hardcodes localhost — reads from NEXT_PUBLIC_API_URL
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -28,6 +28,7 @@ export interface ApiPaginatedResponse<T = unknown> {
 export interface ApiErrorResponse {
   success: false;
   message: string;
+  code?: string;
   errors?: Array<{ field: string; message: string }>;
 }
 
@@ -36,6 +37,7 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly errors?: Array<{ field: string; message: string }>,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -51,7 +53,7 @@ async function apiFetch<T>(
   options: RequestInit = {},
   _retry = false,
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = `${API_BASE_URL}${path}`;
 
   const res = await fetch(url, {
     ...options,
@@ -66,7 +68,7 @@ async function apiFetch<T>(
   if (res.status === 401 && !_retry && !isRefreshing) {
     isRefreshing = true;
     try {
-      const refreshed = await fetch(`${BASE_URL}/auth/refresh`, {
+      const refreshed = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: "POST",
         credentials: "include",
       });
@@ -88,7 +90,7 @@ async function apiFetch<T>(
   if (!res.ok) {
     let body: ApiErrorResponse = { success: false, message: "Request failed" };
     try { body = await res.json() as ApiErrorResponse; } catch { /* noop */ }
-    throw new ApiError(body.message ?? "Request failed", res.status, body.errors);
+    throw new ApiError(body.message ?? "Request failed", res.status, body.errors, body.code);
   }
 
   if (res.status === 204) return undefined as T;
@@ -99,7 +101,7 @@ async function apiFetch<T>(
 // ── Upload helper (FormData, no Content-Type header) ──────────────────
 
 async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = `${API_BASE_URL}${path}`;
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",
@@ -121,6 +123,7 @@ export interface AuthUser {
   email: string;
   role: string;
   name: string;
+  emailVerified: boolean;
   profile: {
     firstName: string;
     lastName?: string;
@@ -133,14 +136,9 @@ export interface AuthUser {
 
 export const authApi = {
   signup: (data: { name: string; email: string; password: string; aesthetics?: string[]; sizes?: string }) =>
-    apiFetch<ApiSuccessResponse<{ user: AuthUser }>>("/auth/signup", {
+    apiFetch<ApiSuccessResponse<{ email: string; verificationRequired: boolean }>>("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({
-        name: data.name,
-        email: data.email,
-        password: data.password,
-        profile: data.sizes ? { clothingSizes: { general: data.sizes } } : undefined,
-      }),
+      body: JSON.stringify(data),
     }),
 
   login: (data: { email: string; password: string }) =>
@@ -148,6 +146,20 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  verifyEmail: (email: string, code: string) =>
+    apiFetch<ApiSuccessResponse<{ user: AuthUser }>>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    }),
+
+  resendVerification: (email: string) =>
+    apiFetch<ApiSuccessResponse<null>>("/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  googleSignInUrl: () => `${API_BASE_URL}/auth/google`,
 
   logout: () =>
     apiFetch<ApiSuccessResponse<null>>("/auth/logout", { method: "POST" }),
@@ -568,7 +580,7 @@ export interface ShoppingItemApi {
 }
 
 export const shoppingApi = {
-  list: (params: { search?: string; category?: string; page?: number } = {}) => {
+  list: (params: { search?: string; category?: string; page?: number; perPage?: number } = {}) => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => v !== undefined && q.set(k, String(v)));
     return apiFetch<ApiPaginatedResponse<ShoppingItemApi>>(`/shopping${q.toString() ? `?${q}` : ""}`);

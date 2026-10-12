@@ -2,7 +2,6 @@ import type { NextFunction, Request, Response } from 'express';
 import type { ZodError } from 'zod';
 import { logger } from '../config/logger';
 import { AppError } from '../utils/AppError';
-import { env } from '../config/env';
 
 export function errorHandler(
   err: Error,
@@ -57,6 +56,7 @@ export function errorHandler(
     res.status(err.statusCode).json({
       success: false,
       message: err.message,
+      ...(err.code && { code: err.code }),
     });
     return;
   }
@@ -67,6 +67,5 @@ export function errorHandler(
   res.status(500).json({
     success: false,
     message: 'An unexpected error occurred. Please try again later.',
-    ...(env.NODE_ENV !== 'production' && { stack: err.stack }),
   });
 }

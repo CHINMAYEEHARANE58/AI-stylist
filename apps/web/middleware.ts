@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password"];
+const PUBLIC_PATHS = ["/login", "/signup", "/verify-email", "/forgot-password", "/reset-password"];
 const AUTH_ONLY_PATHS = ["/dashboard", "/wardrobe", "/outfits", "/saved-outfits",
   "/style-item", "/pinterest-match", "/shopping", "/insights", "/profile", "/settings",
   "/notifications", "/admin"];

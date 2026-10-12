@@ -26,6 +26,11 @@ enum NotificationType {
   SYSTEM
 }
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
 model User {
   id                       String                    @id @default(cuid())
   email                    String                    @unique
@@ -33,6 +38,7 @@ model User {
   emailVerifiedAt          DateTime?
   role                     Role                      @default(USER)
   googleSubject            String?                   @unique
+  lastLoginAt              DateTime?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   profile                  UserProfile?
@@ -41,6 +47,7 @@ model User {
   refreshSessions          RefreshSession[]
   passwordResetTokens      PasswordResetToken[]
   emailVerificationTokens  EmailVerificationToken[]
+  authAccounts             AuthAccount[]
   clothingItems            ClothingItem[]
   outfits                  Outfit[]
   savedOutfits             SavedOutfit[]
@@ -116,10 +123,26 @@ model EmailVerificationToken {
   tokenHash String   @unique
   expiresAt DateTime
   usedAt    DateTime?
+  attemptCount Int   @default(0)
+  verifiedAt  DateTime?
+  supersededAt DateTime?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+}
+
+model AuthAccount {
+  id                String       @id @default(cuid())
+  userId            String
+  provider          AuthProvider
+  providerAccountId String
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId, provider])
 }
 
 model Wardrobe {

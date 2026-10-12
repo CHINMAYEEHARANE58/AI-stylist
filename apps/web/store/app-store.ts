@@ -8,9 +8,11 @@ import type { ClothingItemApi, AuthUser } from "@/lib/api-client";
 interface AuthState {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (user: AuthUser) => void;
   logout: () => void;
   setUser: (user: AuthUser) => void;
+  finishAuthCheck: (user: AuthUser | null) => void;
 }
 
 /* ── Wardrobe slice ─────────────────────────────────────── */
@@ -20,11 +22,16 @@ interface WardrobeState {
   selectedItemId: string | null;
   setFavoriteIds: (ids: string[]) => void;
   toggleFavoriteLocal: (id: string) => void;
+  /** @deprecated Use the server mutation plus toggleFavoriteLocal. Kept for existing UI. */
+  toggleFavorite: (id: string) => void;
   setSelectedItem: (id: string | null) => void;
 }
 
 /* ── Outfits slice ──────────────────────────────────────── */
 interface OutfitsState {
+  /** Transitional local state for existing mock outfit cards; server saves use TanStack Query. */
+  savedOutfitIds: string[];
+  toggleSavedOutfit: (id: string) => void;
   generatorOccasion: string;
   generatorWeather: string;
   generatorMood: string;
@@ -36,6 +43,8 @@ interface ShoppingState {
   wishlistIds: string[];
   setWishlistIds: (ids: string[]) => void;
   toggleWishlistLocal: (id: string) => void;
+  /** @deprecated Use the server mutation plus toggleWishlistLocal. Kept for existing UI. */
+  toggleWishlist: (id: string) => void;
 }
 
 /* ── UI slice ───────────────────────────────────────────── */
@@ -58,9 +67,11 @@ export const useAppStore = create<AppState>()(
       /* ── auth ── */
       user: null,
       isAuthenticated: false,
-      login: (user) => set({ user, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false, favoriteIds: [], wishlistIds: [] }),
-      setUser: (user) => set({ user, isAuthenticated: true }),
+      isLoading: true,
+      login: (user) => set({ user, isAuthenticated: true, isLoading: false }),
+      logout: () => set({ user: null, isAuthenticated: false, isLoading: false, favoriteIds: [], wishlistIds: [], savedOutfitIds: [] }),
+      setUser: (user) => set({ user, isAuthenticated: true, isLoading: false }),
+      finishAuthCheck: (user) => set({ user, isAuthenticated: Boolean(user), isLoading: false }),
 
       /* ── wardrobe ── */
       favoriteIds: [],
@@ -72,9 +83,22 @@ export const useAppStore = create<AppState>()(
             ? s.favoriteIds.filter((i) => i !== id)
             : [...s.favoriteIds, id],
         })),
+      toggleFavorite: (id) =>
+        set((s) => ({
+          favoriteIds: s.favoriteIds.includes(id)
+            ? s.favoriteIds.filter((favoriteId) => favoriteId !== id)
+            : [...s.favoriteIds, id],
+        })),
       setSelectedItem: (id) => set({ selectedItemId: id }),
 
       /* ── outfits ── */
+      savedOutfitIds: [],
+      toggleSavedOutfit: (id) =>
+        set((s) => ({
+          savedOutfitIds: s.savedOutfitIds.includes(id)
+            ? s.savedOutfitIds.filter((savedId) => savedId !== id)
+            : [...s.savedOutfitIds, id],
+        })),
       generatorOccasion: "",
       generatorWeather: "",
       generatorMood: "",
@@ -88,6 +112,12 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           wishlistIds: s.wishlistIds.includes(id)
             ? s.wishlistIds.filter((i) => i !== id)
+            : [...s.wishlistIds, id],
+        })),
+      toggleWishlist: (id) =>
+        set((s) => ({
+          wishlistIds: s.wishlistIds.includes(id)
+            ? s.wishlistIds.filter((wishlistId) => wishlistId !== id)
             : [...s.wishlistIds, id],
         })),
 
@@ -109,6 +139,7 @@ export const useAppStore = create<AppState>()(
         wardrobeView: s.wardrobeView,
         favoriteIds: s.favoriteIds,
         wishlistIds: s.wishlistIds,
+        savedOutfitIds: s.savedOutfitIds,
       }),
     },
   ),
