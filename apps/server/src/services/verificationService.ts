@@ -18,7 +18,7 @@ function generateCode(): string {
 
 export async function issueVerificationCode(user: { id: string; email: string; name: string }, enforceCooldown = true): Promise<void> {
   const now = new Date();
-  const latest = await prisma.emailVerificationToken.findFirst({
+  const latest = await prisma.emailVerificationChallenge.findFirst({
     where: { userId: user.id, usedAt: null, supersededAt: null },
     orderBy: { createdAt: 'desc' },
   });
@@ -28,11 +28,11 @@ export async function issueVerificationCode(user: { id: string; email: string; n
 
   const code = generateCode();
   await prisma.$transaction([
-    prisma.emailVerificationToken.updateMany({
+    prisma.emailVerificationChallenge.updateMany({
       where: { userId: user.id, usedAt: null, supersededAt: null },
       data: { supersededAt: now },
     }),
-    prisma.emailVerificationToken.create({
+    prisma.emailVerificationChallenge.create({
       data: {
         userId: user.id,
         tokenHash: hashVerificationCode(user.id, code),
@@ -52,7 +52,7 @@ export async function verifyEmailCode(email: string, code: string) {
     throw new AppError('Invalid or expired verification code.', 400, true, 'INVALID_VERIFICATION_CODE');
   }
 
-  const challenge = await prisma.emailVerificationToken.findFirst({
+  const challenge = await prisma.emailVerificationChallenge.findFirst({
     where: { userId: user.id, usedAt: null, supersededAt: null },
     orderBy: { createdAt: 'desc' },
   });
@@ -63,13 +63,13 @@ export async function verifyEmailCode(email: string, code: string) {
     throw new AppError('Too many invalid verification attempts. Request a new code.', 429, true, 'VERIFICATION_ATTEMPTS_EXCEEDED');
   }
   if (hashVerificationCode(user.id, code) !== challenge.tokenHash) {
-    await prisma.emailVerificationToken.update({ where: { id: challenge.id }, data: { attemptCount: { increment: 1 } } });
+    await prisma.emailVerificationChallenge.update({ where: { id: challenge.id }, data: { attemptCount: { increment: 1 } } });
     throw new AppError('Invalid verification code.', 400, true, 'INVALID_VERIFICATION_CODE');
   }
 
   const now = new Date();
   const [, verified] = await prisma.$transaction([
-    prisma.emailVerificationToken.update({ where: { id: challenge.id }, data: { usedAt: now, verifiedAt: now } }),
+    prisma.emailVerificationChallenge.update({ where: { id: challenge.id }, data: { usedAt: now, verifiedAt: now } }),
     prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: now }, include: { profile: true } }),
   ]);
   return verified;

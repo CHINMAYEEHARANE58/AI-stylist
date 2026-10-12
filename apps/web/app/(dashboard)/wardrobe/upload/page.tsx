@@ -133,6 +133,7 @@ export default function UploadClothesPage() {
                   <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                   <Button variant="outline" className="pointer-events-none">Browse files</Button>
                 </label>
+                <Button variant="muted" onClick={() => setStep("details")}>Add details manually</Button>
                 <Button variant="muted" disabled>
                   <Camera className="h-4 w-4" /> Use camera
                 </Button>

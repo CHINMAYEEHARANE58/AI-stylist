@@ -16,7 +16,7 @@ let databaseConnected = false;
 
 export async function connectDatabase(): Promise<void> {
   if (!env.DATABASE_URL) {
-    logger.warn('DATABASE_URL is not set — running with development data fallbacks.');
+    logger.warn('DATABASE_URL is not set; database-backed routes are unavailable.');
     return;
   }
 
@@ -24,12 +24,29 @@ export async function connectDatabase(): Promise<void> {
     await prisma.$connect();
     databaseConnected = true;
     logger.info('PostgreSQL connected through Prisma.');
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`PostgreSQL connection failed — running with development data fallbacks. (${message})`);
+  } catch {
+    databaseConnected = false;
+    logger.warn('PostgreSQL connection failed; database-backed routes are unavailable.');
   }
 }
 
 export function isDatabaseConnected(): boolean {
   return databaseConnected;
+}
+
+/** A credential-safe readiness probe used by the health endpoint. */
+export async function checkDatabaseConnection(): Promise<boolean> {
+  if (!env.DATABASE_URL) {
+    databaseConnected = false;
+    return false;
+  }
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    databaseConnected = true;
+    return true;
+  } catch {
+    databaseConnected = false;
+    return false;
+  }
 }

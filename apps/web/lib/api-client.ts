@@ -100,10 +100,10 @@ async function apiFetch<T>(
 
 // ── Upload helper (FormData, no Content-Type header) ──────────────────
 
-async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+async function apiUpload<T>(path: string, formData: FormData, method = "POST"): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const res = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "include",
     body: formData,
     // No Content-Type — browser sets multipart/form-data with boundary
@@ -126,10 +126,10 @@ export interface AuthUser {
   emailVerified: boolean;
   profile: {
     firstName: string;
-    lastName?: string;
-    imageUrl?: string;
-    bio?: string;
-    location?: string;
+    lastName?: string | null;
+    imageUrl?: string | null;
+    bio?: string | null;
+    location?: string | null;
     clothingSizes?: Record<string, string>;
   } | null;
 }
@@ -211,12 +211,15 @@ export interface WardrobeListParams {
   page?: number;
   perPage?: number;
   search?: string;
-  category?: string;
-  season?: string;
-  occasion?: string;
+  category?: string | string[];
+  subcategory?: string | string[];
+  color?: string | string[];
+  season?: string | string[];
+  occasion?: string | string[];
+  aesthetic?: string | string[];
   favorite?: boolean;
   archived?: boolean;
-  sortBy?: string;
+  sortBy?: "createdAt" | "updatedAt" | "name" | "category" | "brand";
   sortDir?: "asc" | "desc";
 }
 
@@ -237,7 +240,11 @@ export const wardrobeApi = {
     apiFetch<ApiSuccessResponse<{
       total: number;
       categories: Array<{ label: string; value: number }>;
+      subcategories: Array<{ label: string; value: number }>;
       colors: Array<{ label: string; value: number }>;
+      seasons: Array<{ label: string; value: number }>;
+      occasions: Array<{ label: string; value: number }>;
+      aesthetics: Array<{ label: string; value: number }>;
     }>>("/wardrobe/summary"),
 
   create: (data: Partial<ClothingItemApi> & { imageFile?: File }) => {
@@ -432,7 +439,7 @@ export const profileApi = {
       Object.entries(rest).forEach(([k, v]) => {
         if (v !== undefined) fd.append(k, typeof v === "object" ? JSON.stringify(v) : String(v));
       });
-      return apiUpload<ApiSuccessResponse<unknown>>("/profile/profile", fd);
+      return apiUpload<ApiSuccessResponse<unknown>>("/profile/profile", fd, "PATCH");
     }
     const { imageFile: _, ...rest } = data;
     return apiFetch<ApiSuccessResponse<unknown>>("/profile/profile", {
@@ -452,6 +459,46 @@ export const profileApi = {
     apiFetch<ApiSuccessResponse<unknown>>("/profile/preferences", {
       method: "PATCH",
       body: JSON.stringify(data),
+    }),
+
+  updateSettings: (data: {
+    profile?: { firstName?: string; lastName?: string; bio?: string; location?: string; clothingSizes?: Record<string, string> };
+    preferences?: {
+      preferredAesthetics?: string[];
+      favoriteColors?: string[];
+      stylePreferences?: string[];
+      appearance?: "light" | "dark" | "system";
+      notificationPreferences?: Record<string, unknown>;
+      privacyPreferences?: Record<string, unknown>;
+    };
+  }) =>
+    apiFetch<ApiSuccessResponse<unknown>>("/profile/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiFetch<ApiSuccessResponse<null>>("/profile/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  requestEmailChange: (newEmail: string, currentPassword: string) =>
+    apiFetch<ApiSuccessResponse<{ newEmail: string }>>("/profile/email-change/request", {
+      method: "POST",
+      body: JSON.stringify({ newEmail, currentPassword }),
+    }),
+
+  confirmEmailChange: (newEmail: string, code: string) =>
+    apiFetch<ApiSuccessResponse<null>>("/profile/email-change/confirm", {
+      method: "POST",
+      body: JSON.stringify({ newEmail, code }),
+    }),
+
+  deleteAccount: (currentPassword: string) =>
+    apiFetch<ApiSuccessResponse<null>>("/profile/delete-account", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, confirmation: "DELETE" }),
     }),
 };
 

@@ -74,6 +74,8 @@ For local development, email verification and reset links are printed only to th
 
 To enable Google, register the callback URL `http://localhost:4000/api/v1/auth/google/callback` with Google and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL`. Production values must use your HTTPS application URLs. The authorization flow uses state and PKCE.
 
+For PostgreSQL setup, migrations, development-only seed data, and the backend structure, see [Backend foundation](docs/backend-foundation.md).
+
 ## Getting Started
 
 Install dependencies:
@@ -121,9 +123,11 @@ Auth:
 
 Wardrobe:
 
-- `GET /api/wardrobe`
-- `POST /api/wardrobe`
-- `POST /api/wardrobe/analyze`
+- `GET /api/v1/wardrobe` — authenticated, paginated list with server-side search, filters, and sorting
+- `POST /api/v1/wardrobe`, `GET/PATCH/DELETE /api/v1/wardrobe/:id`
+- `POST /api/v1/wardrobe/:id/favorite` and `/archive`
+- `GET /api/v1/wardrobe/summary` — real filter/dashboard counts
+- `POST /api/v1/wardrobe/analyze-image`
 
 Outfits:
 
@@ -155,8 +159,11 @@ Insights:
 
 Profile and Admin:
 
-- `GET /api/profile`
-- `PUT /api/profile`
+- `GET /api/v1/profile` and `PATCH /api/v1/profile/profile` — authenticated user's own profile only
+- `PATCH /api/v1/profile/preferences` and `PATCH /api/v1/profile/settings` — allowlisted preference/account settings
+- `POST /api/v1/profile/password` — requires the current password and revokes all sessions
+- `POST /api/v1/profile/email-change/request` then `/confirm` — password-confirmed new-email verification; never updates email directly
+- `POST /api/v1/profile/delete-account` — requires current password and an explicit `DELETE` confirmation
 - `GET /api/admin/overview`
 
 ## Notes
@@ -164,6 +171,7 @@ Profile and Admin:
 - Authentication cookies are `HttpOnly` and `SameSite=Lax`; refresh-token records store only SHA-256 hashes. Browser-origin checks and CORS allow only configured origins in production.
 - OTP codes expire after 10 minutes, are resend-rate-limited for 60 seconds, are single-use, and allow at most five invalid attempts.
 - Database migrations are additive. Do not use Prisma reset against an environment that contains user data.
+- Avatar uploads use Cloudinary only when all three `CLOUDINARY_*` variables are configured. Development returns a non-persistent placeholder instead of storing image bytes in PostgreSQL.
 
 ## Validation
 

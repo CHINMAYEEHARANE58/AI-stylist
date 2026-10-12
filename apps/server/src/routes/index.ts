@@ -8,18 +8,19 @@ import profileRoutes   from './profileRoutes';
 import shoppingRoutes  from './shoppingRoutes';
 import stylistRoutes   from './stylistRoutes';
 import wardrobeRoutes  from './wardrobeRoutes';
-import { isDatabaseConnected } from '../config/db';
+import { checkDatabaseConnection } from '../config/db';
 
 const router = Router();
 
 // ── Health check ──────────────────────────────────────────────────────
-router.get('/health', (_req, res) => {
-  res.json({
-    success:   true,
+router.get('/health', async (_req, res) => {
+  const databaseConnected = await checkDatabaseConnection();
+  res.status(databaseConnected ? 200 : 503).json({
+    success:   databaseConnected,
     service:   'ClosetAI API',
     version:   'v1',
-    status:    'healthy',
-    db:        isDatabaseConnected() ? 'connected' : 'disconnected',
+    status:    databaseConnected ? 'healthy' : 'degraded',
+    database:  databaseConnected ? 'connected' : 'unavailable',
     timestamp: new Date().toISOString(),
     uptime:    `${Math.floor(process.uptime())}s`,
   });

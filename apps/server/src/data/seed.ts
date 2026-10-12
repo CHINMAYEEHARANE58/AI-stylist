@@ -1,6 +1,6 @@
 /**
  * Development seed script — creates realistic test data.
- * Only runs when NODE_ENV is development or test.
+ * Only runs when NODE_ENV is development.
  * NEVER wipes production data.
  */
 import 'dotenv/config';
@@ -10,8 +10,8 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const env = process.env['NODE_ENV'] ?? 'development';
-if (env === 'production') {
-  console.error('❌  Seed script must NOT run in production.');
+if (env !== 'development') {
+  console.error('❌  Seed script only runs in NODE_ENV=development.');
   process.exit(1);
 }
 
@@ -19,12 +19,12 @@ async function main() {
   console.log('🌱  Seeding development database...');
 
   // ── Dev user ───────────────────────────────────────────────────────
-  const passwordHash = await bcrypt.hash('Password123!', 12);
+  const passwordHash = await bcrypt.hash('development-seed-only', 12);
 
   const user = await prisma.user.upsert({
-    where: { email: 'dev@closetai.com' },
+    where: { email: 'phase1.seed@closetai.test' },
     create: {
-      email:        'dev@closetai.com',
+      email:        'phase1.seed@closetai.test',
       passwordHash,
       emailVerifiedAt: new Date(),
       profile: {
@@ -143,8 +143,8 @@ async function main() {
   }
 
   console.log(`✅  Seed complete.`);
-  console.log(`    User:  dev@closetai.com`);
-  console.log(`    Pass:  Password123!`);
+  console.log(`    Test user: phase1.seed@closetai.test`);
+  console.log('    Password: development seed only (not a production account)');
   console.log(`    Items: ${createdItems.length} wardrobe items`);
 }
 

@@ -189,14 +189,29 @@ export async function googleCallback(req: Request, res: Response): Promise<void>
     });
     let user = existingAccount?.user;
     if (!user) {
-      const byEmail = await prisma.user.findUnique({ where: { email }, include: { profile: true } });
+      const byEmail = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          profile: true,
+          authAccounts: { where: { provider: 'GOOGLE' }, select: { providerAccountId: true } },
+        },
+      });
       if (byEmail) {
+        const linkedGoogleAccount = byEmail.authAccounts[0];
+        if (
+          (byEmail.googleSubject && byEmail.googleSubject !== payload.sub)
+          || (linkedGoogleAccount && linkedGoogleAccount.providerAccountId !== payload.sub)
+        ) {
+          throw new Error('A different Google account is already linked to this email.');
+        }
         user = await prisma.user.update({
           where: { id: byEmail.id },
           data: {
             emailVerifiedAt: byEmail.emailVerifiedAt ?? new Date(),
             googleSubject: byEmail.googleSubject ?? payload.sub,
-            authAccounts: { create: { provider: 'GOOGLE', providerAccountId: payload.sub } },
+            ...(linkedGoogleAccount
+              ? {}
+              : { authAccounts: { create: { provider: 'GOOGLE', providerAccountId: payload.sub } } }),
           },
           include: { profile: true },
         });

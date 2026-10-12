@@ -7,8 +7,10 @@ import {
 import { requireAuth } from '../middleware/requireAuth';
 import { uploadSingle } from '../middleware/upload';
 import { asyncHandler } from '../utils/asyncHandler';
+import { authOriginGuard } from '../middleware/authOriginGuard';
 
 const router = Router();
+router.use(authOriginGuard);
 router.use(requireAuth);
 
 router.get( '/',              asyncHandler(getWardrobe));

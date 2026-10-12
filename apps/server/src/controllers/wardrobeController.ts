@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
 
 /** Extract a single string param safely */
 function param(req: Request, key: string): string {
   const v = req.params[key];
-  if (!v || Array.isArray(v)) throw new Error(`Missing param: ${key}`);
+  if (!v || Array.isArray(v)) {throw new Error(`Missing param: ${key}`);}
   return v;
 }
 import { ApiResponse } from '../utils/ApiResponse';
@@ -15,36 +16,57 @@ import { getAIProvider } from '../services/ai/index';
 
 // ── Validation schemas ─────────────────────────────────────────────────
 
+function stringArray(max: number) {
+  return z.preprocess((value) => {
+    if (typeof value !== 'string') {return value;}
+    try { return JSON.parse(value); } catch { return value; }
+  }, z.array(z.string().trim().min(1).max(60)).max(max));
+}
+
+const optionalStringArray = stringArray(12).optional();
+
 const createSchema = z.object({
   name:        z.string().min(1).max(160).trim(),
   imageUrl:    z.string().url().optional(),
   category:    z.string().min(1).max(80).trim(),
   subcategory: z.string().max(80).trim().optional(),
-  colors:      z.array(z.string().max(60)).max(8).default([]),
+  colors:      stringArray(8).default([]),
   pattern:     z.string().max(80).trim().optional(),
   material:    z.string().max(80).trim().optional(),
-  seasons:     z.array(z.string().max(40)).max(5).default([]),
-  occasions:   z.array(z.string().max(60)).max(10).default([]),
-  aesthetics:  z.array(z.string().max(60)).max(8).default([]),
+  seasons:     stringArray(5).default([]),
+  occasions:   stringArray(10).default([]),
+  aesthetics:  stringArray(8).default([]),
   brand:       z.string().max(100).trim().optional(),
   notes:       z.string().max(1000).trim().optional(),
   sleeveStyle: z.string().max(80).trim().optional(),
   favorite:    z.boolean().default(false),
-});
+}).strict();
 
-const updateSchema = createSchema.partial();
+const updateSchema = createSchema.partial().extend({
+  colors: optionalStringArray,
+  seasons: optionalStringArray,
+  occasions: optionalStringArray,
+  aesthetics: optionalStringArray,
+}).refine((data) => Object.keys(data).length > 0, 'Provide at least one field to update.');
+
+const listValues = z.preprocess((value) => {
+  if (Array.isArray(value)) {return value.flatMap((entry) => typeof entry === 'string' ? entry.split(',') : []);}
+  return typeof value === 'string' ? value.split(',') : [];
+}, z.array(z.string().trim().min(1).max(80)).max(12));
 
 const listQuerySchema = z.object({
   page:      z.coerce.number().int().min(1).default(1),
   perPage:   z.coerce.number().int().min(1).max(100).default(24),
   search:    z.string().max(200).optional(),
-  category:  z.string().optional(),
-  season:    z.string().optional(),
-  occasion:  z.string().optional(),
-  aesthetic: z.string().optional(),
+  category:  listValues.optional(),
+  subcategory: listValues.optional(),
+  color: listValues.optional(),
+  season:    listValues.optional(),
+  occasion:  listValues.optional(),
+  aesthetic: listValues.optional(),
   favorite:  z.enum(['true', 'false']).optional(),
   archived:  z.enum(['true', 'false']).optional(),
-  sortBy:    z.enum(['createdAt', 'name', 'category', 'brand']).default('createdAt'),
+  sortBy:    z.enum(['createdAt', 'updatedAt', 'name', 'category', 'brand']).default('createdAt'),
   sortDir:   z.enum(['asc', 'desc']).default('desc'),
 });
 
@@ -64,7 +86,7 @@ export async function getWardrobe(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
   const query  = listQuerySchema.parse(req.query);
 
-  const where: Record<string, unknown> = {
+  const where: Prisma.ClothingItemWhereInput = {
     userId,
     archived: query.archived === 'true',
   };
@@ -73,14 +95,16 @@ export async function getWardrobe(req: Request, res: Response): Promise<void> {
     where['OR'] = [
       { name:  { contains: query.search, mode: 'insensitive' } },
       { brand: { contains: query.search, mode: 'insensitive' } },
-      { colors: { has: query.search } },
+      { notes: { contains: query.search, mode: 'insensitive' } },
     ];
   }
-  if (query.category)  where['category']          = { equals: query.category, mode: 'insensitive' };
-  if (query.season)    where['seasons']            = { has: query.season };
-  if (query.occasion)  where['occasions']          = { has: query.occasion };
-  if (query.aesthetic) where['aesthetics']         = { has: query.aesthetic };
-  if (query.favorite !== undefined) where['favorite'] = query.favorite === 'true';
+  if (query.category?.length) {where.category = { in: query.category, mode: 'insensitive' };}
+  if (query.subcategory?.length) {where.subcategory = { in: query.subcategory, mode: 'insensitive' };}
+  if (query.color?.length) {where.colors = { hasSome: query.color };}
+  if (query.season?.length) {where.seasons = { hasSome: query.season };}
+  if (query.occasion?.length) {where.occasions = { hasSome: query.occasion };}
+  if (query.aesthetic?.length) {where.aesthetics = { hasSome: query.aesthetic };}
+  if (query.favorite !== undefined) {where.favorite = query.favorite === 'true';}
 
   const [total, items] = await Promise.all([
     prisma.clothingItem.count({ where }),
@@ -106,7 +130,7 @@ export async function getWardrobeItem(req: Request, res: Response): Promise<void
   const item = await prisma.clothingItem.findFirst({
     where: { id, userId },
   });
-  if (!item) throw new AppError('Item not found.', 404);
+  if (!item) {throw new AppError('Item not found.', 404);}
   ApiResponse.success(res, item);
 }
 
@@ -151,6 +175,7 @@ export async function createWardrobeItem(req: Request, res: Response): Promise<v
       notes:       data.notes,
       sleeveStyle: data.sleeveStyle,
       favorite:    data.favorite,
+      images: imageProviderId ? { create: { url: imageUrl, providerAssetId: imageProviderId, sortOrder: 0 } } : undefined,
     },
   });
 
@@ -166,7 +191,7 @@ export async function updateWardrobeItem(req: Request, res: Response): Promise<v
     where: { id, userId },
     select: { id: true },
   });
-  if (!existing) throw new AppError('Item not found.', 404);
+  if (!existing) {throw new AppError('Item not found.', 404);}
 
   const item = await prisma.clothingItem.update({
     where: { id },
@@ -183,7 +208,7 @@ export async function deleteWardrobeItem(req: Request, res: Response): Promise<v
     where: { id, userId },
     select: { id: true, imageProviderId: true },
   });
-  if (!item) throw new AppError('Item not found.', 404);
+  if (!item) {throw new AppError('Item not found.', 404);}
 
   await prisma.clothingItem.delete({ where: { id: item.id } });
 
@@ -202,7 +227,7 @@ export async function toggleFavorite(req: Request, res: Response): Promise<void>
     where: { id, userId },
     select: { id: true, favorite: true },
   });
-  if (!item) throw new AppError('Item not found.', 404);
+  if (!item) {throw new AppError('Item not found.', 404);}
 
   const updated = await prisma.clothingItem.update({
     where: { id: item.id },
@@ -218,7 +243,7 @@ export async function toggleArchive(req: Request, res: Response): Promise<void> 
     where: { id, userId },
     select: { id: true, archived: true },
   });
-  if (!item) throw new AppError('Item not found.', 404);
+  if (!item) {throw new AppError('Item not found.', 404);}
 
   const updated = await prisma.clothingItem.update({
     where: { id: item.id },
@@ -228,7 +253,7 @@ export async function toggleArchive(req: Request, res: Response): Promise<void> 
 }
 
 export async function analyzeWardrobeImage(req: Request, res: Response): Promise<void> {
-  if (!req.file) throw new AppError('No image file provided.', 422);
+  if (!req.file) {throw new AppError('No image file provided.', 422);}
 
   const userId = req.user!.id;
 
@@ -257,15 +282,23 @@ export async function getWardrobeSummary(req: Request, res: Response): Promise<v
   const userId = req.user!.id;
   const items = await prisma.clothingItem.findMany({
     where: { userId, archived: false },
-    select: { id: true, name: true, category: true, colors: true, seasons: true, occasions: true, aesthetics: true, pattern: true, material: true },
+    select: { id: true, name: true, category: true, subcategory: true, colors: true, seasons: true, occasions: true, aesthetics: true, pattern: true, material: true },
   });
 
   const categories: Record<string, number> = {};
+  const subcategories: Record<string, number> = {};
   const colors: Record<string, number> = {};
+  const seasons: Record<string, number> = {};
+  const occasions: Record<string, number> = {};
+  const aesthetics: Record<string, number> = {};
 
   for (const item of items) {
     categories[item.category] = (categories[item.category] ?? 0) + 1;
-    for (const c of item.colors) colors[c] = (colors[c] ?? 0) + 1;
+    if (item.subcategory) {subcategories[item.subcategory] = (subcategories[item.subcategory] ?? 0) + 1;}
+    for (const c of item.colors) {colors[c] = (colors[c] ?? 0) + 1;}
+    for (const season of item.seasons) {seasons[season] = (seasons[season] ?? 0) + 1;}
+    for (const occasion of item.occasions) {occasions[occasion] = (occasions[occasion] ?? 0) + 1;}
+    for (const aesthetic of item.aesthetics) {aesthetics[aesthetic] = (aesthetics[aesthetic] ?? 0) + 1;}
   }
 
   ApiResponse.success(res, {
@@ -273,9 +306,13 @@ export async function getWardrobeSummary(req: Request, res: Response): Promise<v
     categories: Object.entries(categories)
       .sort((a, b) => b[1] - a[1])
       .map(([label, value]) => ({ label, value })),
+    subcategories: Object.entries(subcategories).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
     colors: Object.entries(colors)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([label, value]) => ({ label, value })),
+    seasons: Object.entries(seasons).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
+    occasions: Object.entries(occasions).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
+    aesthetics: Object.entries(aesthetics).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
   });
 }
