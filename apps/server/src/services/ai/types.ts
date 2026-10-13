@@ -36,6 +36,8 @@ export interface OutfitGenerationResult {
 /** Input for outfit generator */
 export interface OutfitGenerationInput {
   occasion?: string;
+  aesthetic?: string;
+  colorPreference?: string;
   weather?: string;
   mood?: string;
   season?: string;

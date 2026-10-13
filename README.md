@@ -129,6 +129,12 @@ Wardrobe:
 - `GET /api/v1/wardrobe/summary` — real filter/dashboard counts
 - `POST /api/v1/wardrobe/analyze-image`
 
+Outfits:
+
+- `POST /api/v1/outfits/generate` — rate-limited, authenticated generation from eligible non-archived wardrobe items
+- `POST /api/v1/outfits` — explicitly saves a reviewed outfit; generation never saves it automatically
+- `GET /api/v1/outfits/saved` and `DELETE /api/v1/outfits/saved/:id`
+
 ## AI clothing analysis
 
 The wardrobe upload screen sends the selected JPEG, PNG, or WebP to the backend, where its real bytes and dimensions are validated before it is sent to the configured vision provider. The browser never receives or uses an AI provider credential. ClosetAI validates the provider's JSON response with a strict schema, then presents it as editable suggestions; only the user's confirmed item details are saved.
@@ -144,6 +150,8 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
 `AI_PROVIDER=mock` is intentionally limited to development and visibly represents non-real analysis. Without a provider key, analysis returns a safe configuration error rather than fabricated labels. Results are cached by a SHA-256 hash of the validated image for `AI_ANALYSIS_CACHE_MINUTES` (24 hours by default); images themselves are not stored in this cache.
+
+Outfit generation uses the same server-only provider configuration. The API submits only the requesting user's eligible, non-archived clothing summaries. Provider output must satisfy a strict schema, and each proposed item ID is checked again against the user's current database records before it can be shown. A candidate containing a foreign, deleted, archived, or invented ID is discarded as a whole. Generation history is retained in `AIStylingHistory`; `Outfit`, `OutfitItem`, and `SavedOutfit` records are created only after the user chooses **Save**.
 
 Outfits:
 

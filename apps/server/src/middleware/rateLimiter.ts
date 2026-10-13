@@ -32,3 +32,12 @@ export const uploadLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Too many upload attempts. Please try again later.' },
 });
+
+/** Protects model-backed outfit generation from accidental or repeated requests. */
+export const outfitGenerationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many outfit generations. Please wait a few minutes and try again.', code: 'OUTFIT_GENERATION_RATE_LIMITED' },
+});

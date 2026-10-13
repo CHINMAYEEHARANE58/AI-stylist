@@ -368,13 +368,15 @@ export interface GeneratedOutfitApi {
 export const outfitsApi = {
   generate: (data: {
     occasion?: string;
+    aesthetic?: string;
+    colorPreference?: string;
     weather?: string;
     mood?: string;
     season?: string;
     notes?: string;
     anchorItemId?: string;
   }) =>
-    apiFetch<ApiSuccessResponse<{ outfits: GeneratedOutfitApi[]; provider: string }>>("/outfits/generate", {
+    apiFetch<ApiSuccessResponse<{ outfits: GeneratedOutfitApi[]; provider?: string; model?: string; minimumItems?: number }>>("/outfits/generate", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -401,9 +403,12 @@ export const outfitsApi = {
     occasion?: string;
     aesthetic?: string;
     season?: string;
+    weather?: string;
     explanation?: string;
     collection?: string;
     source?: "MANUAL" | "AI_GENERATED" | "INSPIRATION_MATCH";
+    provider?: string;
+    providerModel?: string;
   }) =>
     apiFetch<ApiSuccessResponse<OutfitApi>>("/outfits", {
       method: "POST",

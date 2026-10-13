@@ -53,11 +53,7 @@ export class MockAIProvider implements AIProvider {
       };
     }
 
-    const aestheticsToGenerate = [
-      pick(['Casual', 'Minimal']),
-      pick(['Elegant', 'Classic']),
-      pick(['Quiet luxury', 'Streetwear']),
-    ];
+    const aestheticsToGenerate = [input.aesthetic ?? pick(['Casual', 'Minimal']), pick(['Elegant', 'Classic']), pick(['Quiet luxury', 'Streetwear'])];
 
     const outfits = aestheticsToGenerate.slice(0, Math.min(3, wardrobeItems.length)).map((aesthetic, i) => {
       const items = pickN(wardrobeItems, Math.min(3, wardrobeItems.length));

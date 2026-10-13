@@ -12,22 +12,9 @@ import { logger } from '../../config/logger';
 import { AppError } from '../../utils/AppError';
 import { env } from '../../config/env';
 import { clothingAnalysisSchema } from './clothingAnalysis';
+import { outfitGenerationResultSchema } from './outfitGeneration';
 
 // ── Zod schemas for output validation ─────────────────────────────────
-
-const generatedOutfitSchema = z.object({
-  title: z.string().max(100),
-  clothingItemIds: z.array(z.string()),
-  occasion: z.string(),
-  aesthetic: z.string(),
-  season: z.string().optional(),
-  explanation: z.string().max(500),
-  score: z.number().min(0).max(100),
-});
-
-const outfitResultSchema = z.object({
-  outfits: z.array(generatedOutfitSchema).max(6),
-});
 
 const styleLookSchema = z.object({
   aesthetic: z.string(),
@@ -194,7 +181,7 @@ Rules: infer only what is visually reasonable. Omit uncertain optional fields in
       `ID:${w.id} | ${w.name} | ${w.category} | Colors:${w.colors.join(',')} | Occasions:${w.occasions.join(',')}`
     ).join('\n');
 
-    const systemPrompt = `You are an expert personal stylist. Create outfit combinations using ONLY the wardrobe items provided by their exact IDs. Never invent items that are not in the list.
+    const systemPrompt = `You are an expert personal stylist. Create coherent outfit combinations using ONLY the wardrobe items provided by their exact IDs. Never invent, transform, or omit an ID from the supplied list. Every candidate must contain only available IDs and include a concise explanation of why the colours, silhouette, occasion, and weather work together.
 
 Respond with a JSON object:
 {
@@ -213,6 +200,8 @@ Respond with a JSON object:
 
     const userMsg = `Create 3-4 outfit combinations for:
 Occasion: ${input.occasion ?? 'any'}
+Requested aesthetic: ${input.aesthetic ?? 'any'}
+Colour preference: ${input.colorPreference ?? 'none'}
 Weather: ${input.weather ?? 'unspecified'}
 Mood: ${input.mood ?? 'any'}
 Season: ${input.season ?? 'any'}
@@ -227,16 +216,19 @@ ${wardrobeSummary}`;
       { role: 'user', content: userMsg },
     ]);
 
-    const parsed = outfitResultSchema.parse(JSON.parse(raw) as unknown);
-
-    // Validate that all returned IDs actually exist
-    const validIds = new Set(input.wardrobeItems.map((w) => w.id));
-    const validOutfits = parsed.outfits.map((o) => ({
-      ...o,
-      clothingItemIds: o.clothingItemIds.filter((id) => validIds.has(id)),
-    })).filter((o) => o.clothingItemIds.length > 0);
-
-    return { outfits: validOutfits, provider: this.name, model: this.model };
+    try {
+      const parsed = outfitGenerationResultSchema.safeParse(JSON.parse(raw) as unknown);
+      if (!parsed.success) {
+        logger.warn('AI provider returned invalid outfit-generation output', { issues: parsed.error.issues.length });
+        throw new AppError('The AI provider returned an invalid outfit. Please try again.', 502, true, 'AI_MALFORMED_OUTFIT_RESPONSE');
+      }
+      return { outfits: parsed.data.outfits, provider: this.name, model: this.model };
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('The AI provider returned an invalid outfit. Please try again.', 502, true, 'AI_MALFORMED_OUTFIT_RESPONSE');
+    }
   }
 
   async styleThisItem(

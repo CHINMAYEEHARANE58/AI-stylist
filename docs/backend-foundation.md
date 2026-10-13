@@ -56,6 +56,12 @@ Each primary image stores its provider asset ID, storage key, URL, MIME type, by
 
 Set `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and a vision-capable `AI_VISION_MODEL` (for example, `gpt-4o`). `OPENAI_BASE_URL` can point to an OpenAI-compatible gateway. `AI_PROVIDER=mock` is development-only and must be selected explicitly. Validated non-sensitive analysis is cached by image SHA-256 plus provider/model for `AI_ANALYSIS_CACHE_MINUTES`; the original image is never put in this cache.
 
+## AI outfit generation
+
+`POST /api/v1/outfits/generate` is authenticated, origin-guarded, and rate-limited to 12 generation requests per 15 minutes. It loads only the caller's non-archived wardrobe items, applies selected season, occasion, aesthetic, and colour filters, and does not invoke the provider when fewer than two eligible items remain. The provider receives only clothing summaries and must return strict structured JSON. Each candidate is checked against a fresh ownership and availability query; any candidate containing an invented, foreign, deleted, or archived clothing ID is discarded whole.
+
+Successful, validated generations are written to `AIStylingHistory`. They are not automatically saved as outfits. A separate explicit `POST /api/v1/outfits` call writes `Outfit`, `OutfitItem`, and `SavedOutfit`, after verifying every selected item belongs to the caller and remains available.
+
 ## Digital wardrobe
 
 `ClothingItem` belongs to both its owner and that owner's wardrobe. Every list, read, update, archive, favorite, and delete operation scopes its Prisma query to the authenticated `userId`; guessing another item ID returns `404`. Item data includes category/subcategory, colours, material, pattern, seasons, occasions, aesthetics, brand, notes, image URL/provider reference, and timestamps. Associated `ClothingImage` records support additional external image references without storing binaries in PostgreSQL.
