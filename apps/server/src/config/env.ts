@@ -26,9 +26,15 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
+  IMAGE_STORAGE_VISIBILITY: z.enum(['public', 'private']).default('public'),
 
   // AI providers
+  AI_PROVIDER: z.enum(['openai', 'mock']).default('openai'),
+  AI_VISION_MODEL: z.string().min(1).default('gpt-4o'),
+  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
+  AI_ANALYSIS_CACHE_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1_440),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
   GEMINI_API_KEY: z.string().optional(),
 
   // Weather

@@ -53,14 +53,7 @@ export async function analyzeInspirationImage(req: Request, res: Response): Prom
 
   if (req.file) {
     // Uploaded file
-    const uploaded = await uploadImage(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype,
-      req.file.size,
-      userId,
-      'inspiration',
-    );
+    const uploaded = await uploadImage(req.file.buffer, userId, 'inspiration');
     imageUrl   = uploaded.url;
     providerId = uploaded.providerId;
   } else {

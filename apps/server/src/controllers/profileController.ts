@@ -88,14 +88,7 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
   let imageProviderId: string | undefined;
 
   if (req.file) {
-    const result = await uploadImage(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype,
-      req.file.size,
-      userId,
-      'profile',
-    );
+    const result = await uploadImage(req.file.buffer, userId, 'profile');
     imageUrl = result.url;
     imageProviderId = result.providerId;
 

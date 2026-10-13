@@ -23,3 +23,12 @@ export const authLimiter = rateLimit({
     message: 'Too many authentication attempts. Please try again later.',
   },
 });
+
+/** Restricts expensive multipart image handling independently from general API traffic. */
+export const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many upload attempts. Please try again later.' },
+});

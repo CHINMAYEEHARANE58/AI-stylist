@@ -194,6 +194,9 @@ model ClothingItem {
   brand           String?         @db.VarChar(100)
   notes           String?         @db.VarChar(1000)
   sleeveStyle     String?         @db.VarChar(80)
+  fit             String?         @db.VarChar(80)
+  silhouette      String?         @db.VarChar(80)
+  description     String?         @db.VarChar(500)
   favorite        Boolean         @default(false)
   archived        Boolean         @default(false)
   aiMetadata      Json?
@@ -216,6 +219,11 @@ model ClothingImage {
   clothingItemId  String
   url             String
   providerAssetId String?
+  storageKey      String?
+  contentType     String?      @db.VarChar(40)
+  byteSize        Int?
+  width           Int?
+  height          Int?
   altText         String?      @db.VarChar(240)
   sortOrder       Int          @default(0)
   createdAt       DateTime     @default(now())
@@ -305,6 +313,22 @@ model AIStylingHistory {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, requestType, createdAt])
+}
+
+// Stores only a hash and validated, non-sensitive attribute suggestions. This
+// prevents repeated provider requests for the same image without retaining it.
+model ClothingAnalysisCache {
+  id        String   @id @default(cuid())
+  imageHash String   @db.Char(64)
+  provider  String   @db.VarChar(80)
+  model     String   @db.VarChar(120)
+  analysis  Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([imageHash, provider, model])
+  @@index([expiresAt])
 }
 
 model InspirationImage {

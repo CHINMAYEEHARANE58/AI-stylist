@@ -2,7 +2,7 @@ import multer from 'multer';
 import type { Request } from 'express';
 import { AppError } from '../utils/AppError';
 
-const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const storage = multer.memoryStorage();
@@ -13,7 +13,7 @@ function fileFilter(
   cb: multer.FileFilterCallback,
 ): void {
   if (!ALLOWED_MIME.includes(file.mimetype)) {
-    cb(new AppError('Invalid file type. Only JPEG, PNG, WEBP, and GIF are allowed.', 422));
+    cb(new AppError('Invalid declared file type. Upload a JPEG, PNG, or WebP image.', 422));
     return;
   }
   cb(null, true);

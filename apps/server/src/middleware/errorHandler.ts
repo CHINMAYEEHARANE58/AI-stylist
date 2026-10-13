@@ -9,6 +9,10 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if ((err as NodeJS.ErrnoException).code === 'LIMIT_FILE_SIZE') {
+    res.status(422).json({ success: false, message: 'File too large. Maximum size is 10 MB.', code: 'IMAGE_TOO_LARGE' });
+    return;
+  }
   // Zod validation error
   if (err.name === 'ZodError') {
     const zodErr = err as ZodError;

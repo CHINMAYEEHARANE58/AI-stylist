@@ -3,12 +3,15 @@ export interface ClothingAnalysis {
   category: string;
   subcategory?: string;
   colors: string[];
-  pattern: string;
+  pattern?: string;
   material?: string;
   sleeveStyle?: string;
+  fit?: string;
+  silhouette?: string;
   seasons: string[];
   occasions: string[];
   aesthetics: string[];
+  description?: string;
   confidence: number; // 0-1
 }
 

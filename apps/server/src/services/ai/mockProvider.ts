@@ -1,7 +1,7 @@
 /**
  * Development mock AI provider.
  * Returns realistic but deterministic responses without any external API call.
- * Used automatically when no real AI key is configured.
+ * Available only through the explicit development `AI_PROVIDER=mock` setting.
  */
 import type {
   AIProvider, ChatMessage, ClothingAnalysis, InspirationAnalysisResult,
@@ -32,9 +32,12 @@ export class MockAIProvider implements AIProvider {
       pattern: pick(['Solid', 'Stripe', 'Check', 'Floral', 'Abstract']),
       material: pick(['Cotton', 'Silk', 'Linen', 'Wool', 'Polyester', 'Denim', 'Leather']),
       sleeveStyle: pick(['Long sleeve', 'Short sleeve', 'Sleeveless', 'Off-shoulder']),
+      fit: pick(['Regular', 'Relaxed', 'Fitted']),
+      silhouette: pick(['Straight', 'A-line', 'Structured']),
       seasons: pickN(['Spring', 'Summer', 'Autumn', 'Winter', 'All season'], 2),
       occasions: pickN(['Office', 'Casual', 'Party', 'Travel', 'Brunch', 'Date night'], 2),
       aesthetics: pickN(AESTHETICS, 2),
+      description: 'Development mock analysis — review and edit before saving.',
       confidence: 0.75,
     };
   }

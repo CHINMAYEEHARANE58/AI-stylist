@@ -189,6 +189,7 @@ export interface ClothingItemApi {
   id: string;
   name: string;
   imageUrl: string;
+  imageProviderId?: string | null;
   category: string;
   subcategory?: string;
   colors: string[];
@@ -200,11 +201,24 @@ export interface ClothingItemApi {
   brand?: string;
   notes?: string;
   sleeveStyle?: string;
+  fit?: string;
+  silhouette?: string;
+  description?: string;
   favorite: boolean;
   archived: boolean;
   aiMetadata?: unknown;
   createdAt: string;
   updatedAt: string;
+  images?: Array<{
+    id: string;
+    url: string;
+    providerAssetId?: string | null;
+    storageKey?: string | null;
+    contentType?: string | null;
+    byteSize?: number | null;
+    width?: number | null;
+    height?: number | null;
+  }>;
 }
 
 export interface WardrobeListParams {
@@ -265,14 +279,25 @@ export const wardrobeApi = {
     });
   },
 
-  update: (id: string, data: Partial<ClothingItemApi>) =>
-    apiFetch<ApiSuccessResponse<ClothingItemApi>>(`/wardrobe/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+  update: (id: string, data: Partial<ClothingItemApi> & { imageFile?: File }) => {
+    if (data.imageFile) {
+      const fd = new FormData();
+      fd.append("image", data.imageFile);
+      const { imageFile: _, images: __, imageUrl: ___, ...rest } = data;
+      Object.entries(rest).forEach(([key, value]) => {
+        if (value !== undefined) fd.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+      });
+      return apiUpload<ApiSuccessResponse<ClothingItemApi>>(`/wardrobe/${id}`, fd, "PATCH");
+    }
+    const { imageFile: _, images: __, imageUrl: ___, ...rest } = data;
+    return apiFetch<ApiSuccessResponse<ClothingItemApi>>(`/wardrobe/${id}`, { method: "PATCH", body: JSON.stringify(rest) });
+  },
 
   delete: (id: string) =>
     apiFetch<void>(`/wardrobe/${id}`, { method: "DELETE" }),
+
+  deleteImage: (id: string) =>
+    apiFetch<ApiSuccessResponse<ClothingItemApi>>(`/wardrobe/${id}/image`, { method: "DELETE" }),
 
   toggleFavorite: (id: string) =>
     apiFetch<ApiSuccessResponse<ClothingItemApi>>(`/wardrobe/${id}/favorite`, { method: "POST" }),
@@ -288,14 +313,22 @@ export const wardrobeApi = {
       providerId?: string;
       analysis: {
         category: string;
+        subcategory?: string;
         colors: string[];
-        pattern: string;
+        pattern?: string;
         material?: string;
+        sleeveStyle?: string;
+        fit?: string;
+        silhouette?: string;
         seasons: string[];
         occasions: string[];
         aesthetics: string[];
+        description?: string;
         confidence: number;
       };
+      provider: string;
+      model: string;
+      cached: boolean;
     }>>("/wardrobe/analyze-image", fd);
   },
 };

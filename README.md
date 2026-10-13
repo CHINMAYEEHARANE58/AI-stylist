@@ -129,6 +129,22 @@ Wardrobe:
 - `GET /api/v1/wardrobe/summary` — real filter/dashboard counts
 - `POST /api/v1/wardrobe/analyze-image`
 
+## AI clothing analysis
+
+The wardrobe upload screen sends the selected JPEG, PNG, or WebP to the backend, where its real bytes and dimensions are validated before it is sent to the configured vision provider. The browser never receives or uses an AI provider credential. ClosetAI validates the provider's JSON response with a strict schema, then presents it as editable suggestions; only the user's confirmed item details are saved.
+
+Set these variables in `apps/server/.env` to enable real analysis:
+
+```bash
+AI_PROVIDER=openai
+OPENAI_API_KEY=...
+AI_VISION_MODEL=gpt-4o
+# Optional: an OpenAI-compatible server-side endpoint, such as a configured gateway
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+`AI_PROVIDER=mock` is intentionally limited to development and visibly represents non-real analysis. Without a provider key, analysis returns a safe configuration error rather than fabricated labels. Results are cached by a SHA-256 hash of the validated image for `AI_ANALYSIS_CACHE_MINUTES` (24 hours by default); images themselves are not stored in this cache.
+
 Outfits:
 
 - `GET /api/outfits`
@@ -171,7 +187,7 @@ Profile and Admin:
 - Authentication cookies are `HttpOnly` and `SameSite=Lax`; refresh-token records store only SHA-256 hashes. Browser-origin checks and CORS allow only configured origins in production.
 - OTP codes expire after 10 minutes, are resend-rate-limited for 60 seconds, are single-use, and allow at most five invalid attempts.
 - Database migrations are additive. Do not use Prisma reset against an environment that contains user data.
-- Avatar uploads use Cloudinary only when all three `CLOUDINARY_*` variables are configured. Development returns a non-persistent placeholder instead of storing image bytes in PostgreSQL.
+- Wardrobe uploads are server-to-Cloudinary only when all three `CLOUDINARY_*` variables are configured. They validate bytes and dimensions server-side, store only provider metadata in PostgreSQL, and fail closed when storage is unavailable—there is no mock upload fallback.
 
 ## Validation
 

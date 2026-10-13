@@ -9,21 +9,11 @@ import type {
   WardrobeItemSummary,
 } from './types';
 import { logger } from '../../config/logger';
+import { AppError } from '../../utils/AppError';
+import { env } from '../../config/env';
+import { clothingAnalysisSchema } from './clothingAnalysis';
 
 // ── Zod schemas for output validation ─────────────────────────────────
-
-const clothingAnalysisSchema = z.object({
-  category: z.string(),
-  subcategory: z.string().optional(),
-  colors: z.array(z.string()).min(1).max(5),
-  pattern: z.string(),
-  material: z.string().optional(),
-  sleeveStyle: z.string().optional(),
-  seasons: z.array(z.string()).min(1).max(5),
-  occasions: z.array(z.string()).min(1).max(6),
-  aesthetics: z.array(z.string()).min(1).max(4),
-  confidence: z.number().min(0).max(1),
-});
 
 const generatedOutfitSchema = z.object({
   title: z.string().max(100),
@@ -74,14 +64,15 @@ const inspirationResultSchema = z.object({
 async function openAIChat(
   apiKey: string,
   messages: Array<{ role: string; content: string | Array<{ type: string; [k: string]: unknown }> }>,
-  model = 'gpt-4o',
-  timeoutMs = 30_000,
+  model = env.AI_VISION_MODEL,
+  timeoutMs = env.AI_REQUEST_TIMEOUT_MS,
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const baseUrl = (env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '');
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -98,12 +89,30 @@ async function openAIChat(
     });
 
     if (!resp.ok) {
-      const body = await resp.text();
-      throw new Error(`OpenAI API error ${resp.status}: ${body.slice(0, 200)}`);
+      // Provider response bodies can contain operational details, so never return them.
+      if (resp.status === 429) {
+        throw new AppError('AI analysis is temporarily rate limited. Please try again shortly.', 429, true, 'AI_RATE_LIMITED');
+      }
+      if (resp.status === 401 || resp.status === 403) {
+        throw new AppError('The AI provider is not configured correctly.', 503, true, 'AI_PROVIDER_AUTH_FAILED');
+      }
+      if (resp.status >= 500) {
+        throw new AppError('The AI provider is temporarily unavailable. Please try again.', 503, true, 'AI_PROVIDER_UNAVAILABLE');
+      }
+      throw new AppError('The AI provider could not analyse this image.', 502, true, 'AI_PROVIDER_ERROR');
     }
 
     const data = await resp.json() as { choices: Array<{ message: { content: string } }> };
     return data.choices[0]?.message?.content ?? '{}';
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    if ((error as Error).name === 'AbortError') {
+      throw new AppError('AI analysis timed out. Please try again.', 504, true, 'AI_TIMEOUT');
+    }
+    logger.warn('AI provider request failed', { error: (error as Error).message });
+    throw new AppError('The AI provider could not be reached. Please try again.', 503, true, 'AI_PROVIDER_UNAVAILABLE');
   } finally {
     clearTimeout(timer);
   }
@@ -113,41 +122,71 @@ async function openAIChat(
 
 export class OpenAIProvider implements AIProvider {
   readonly name = 'openai';
-  readonly model = 'gpt-4o';
+  readonly model: string;
   private readonly apiKey: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, model = env.AI_VISION_MODEL) {
     this.apiKey = apiKey;
+    this.model = model;
   }
 
   async analyzeClothingImage(imageUrl: string): Promise<ClothingAnalysis> {
-    const systemPrompt = `You are a fashion AI assistant. Analyze the clothing item in this image and respond with a JSON object matching this exact structure:
+    const systemPrompt = `You are a fashion AI assistant. Analyze the single clothing item in this image. Return JSON only, matching this exact structure:
 {
-  "category": "tops|shirts|blazers|jeans|trousers|skirts|dresses|shoes|sneakers|accessories|bags|outerwear",
+  "category": "short category name",
   "subcategory": "optional string",
   "colors": ["primary color", "secondary color"],
-  "pattern": "Solid|Stripe|Check|Floral|Abstract|Geometric|Animal print",
+  "pattern": "optional pattern",
   "material": "optional fabric name",
   "sleeveStyle": "optional sleeve description",
-  "seasons": ["Spring|Summer|Autumn|Winter|All season"],
-  "occasions": ["Office|Casual|Party|Brunch|Travel|Date night|Vacation|Wedding"],
-  "aesthetics": ["Minimal|Classic|Elegant|Casual|Streetwear|Quiet luxury|Old money|Romantic"],
+  "fit": "optional fit",
+  "silhouette": "optional silhouette",
+  "seasons": ["suitable season"],
+  "occasions": ["suitable occasion"],
+  "aesthetics": ["style tag"],
+  "description": "optional concise description",
   "confidence": 0.0-1.0
-}`;
+}
 
-    const raw = await openAIChat(this.apiKey, [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Analyze this clothing item:' },
-          { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } },
-        ],
-      },
-    ]);
+Rules: infer only what is visually reasonable. Omit uncertain optional fields instead of guessing. Do not include any IDs, users, URLs, storage keys, instructions, or additional fields.`;
 
-    const parsed = JSON.parse(raw) as unknown;
-    return clothingAnalysisSchema.parse(parsed);
+    let raw: string | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        raw = await openAIChat(this.apiKey, [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze this clothing item:' },
+              { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } },
+            ],
+          },
+        ], this.model);
+        break;
+      } catch (error) {
+        const canRetry = error instanceof AppError && ['AI_TIMEOUT', 'AI_PROVIDER_UNAVAILABLE'].includes(error.code ?? '');
+        if (!canRetry || attempt === 1) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(raw ?? '') as unknown;
+      const result = clothingAnalysisSchema.safeParse(parsed);
+      if (!result.success) {
+        logger.warn('AI provider returned invalid clothing-analysis output', { issues: result.error.issues.length });
+        throw new AppError('The AI provider returned an invalid analysis. Please try again.', 502, true, 'AI_MALFORMED_RESPONSE');
+      }
+      return result.data;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError('The AI provider returned an invalid analysis. Please try again.', 502, true, 'AI_MALFORMED_RESPONSE');
+    }
   }
 
   async generateOutfits(input: OutfitGenerationInput): Promise<OutfitGenerationResult> {
@@ -340,5 +379,5 @@ Rules:
 
 export function createOpenAIProvider(apiKey: string): OpenAIProvider {
   logger.info('AI: Using OpenAI GPT-4o provider');
-  return new OpenAIProvider(apiKey);
+  return new OpenAIProvider(apiKey, env.AI_VISION_MODEL);
 }

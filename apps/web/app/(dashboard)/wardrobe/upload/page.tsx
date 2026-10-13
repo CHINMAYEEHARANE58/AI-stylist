@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { wardrobeApi } from "@/lib/api-client";
@@ -30,10 +31,17 @@ export default function UploadClothesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [aiTags, setAiTags]       = useState<string[]>([]);
   const [analysing, setAnalysing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [name, setName]           = useState("");
   const [brand, setBrand]         = useState("");
   const [color, setColor]         = useState("");
   const [fabric, setFabric]       = useState("");
+  const [subcategory, setSubcategory] = useState("");
+  const [pattern, setPattern]     = useState("");
+  const [sleeveStyle, setSleeveStyle] = useState("");
+  const [fit, setFit]             = useState("");
+  const [silhouette, setSilhouette] = useState("");
+  const [description, setDescription] = useState("");
   const [selectedCats, setCats]   = useState<string[]>([]);
   const [selectedSeasons, setSeasons] = useState<string[]>([]);
   const [selectedOccasions, setOccasions] = useState<string[]>([]);
@@ -44,13 +52,18 @@ export default function UploadClothesPage() {
       name: name || "Untitled item",
       imageFile: imageFile ?? undefined,
       category: selectedCats[0]?.toLowerCase() ?? "tops",
-      colors: color ? [color] : (aiTags.filter((t) => t.match(/ivory|black|camel|white|navy|beige|grey|blue|red|green|pink|brown|cream/i)) || []),
+      subcategory: subcategory || undefined,
+      colors: color.split(",").map((entry) => entry.trim()).filter(Boolean),
       material: fabric || undefined,
+      pattern: pattern || undefined,
+      sleeveStyle: sleeveStyle || undefined,
+      fit: fit || undefined,
+      silhouette: silhouette || undefined,
+      description: description || undefined,
       seasons: selectedSeasons.length ? selectedSeasons : (aiTags.includes("All season") ? ["All season"] : []),
       occasions: selectedOccasions,
       aesthetics: selectedStyles,
       brand: brand || undefined,
-      pattern: undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wardrobe"] });
@@ -58,13 +71,9 @@ export default function UploadClothesPage() {
     },
   });
 
-  async function handleFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    setImageFile(file);
+  async function analyseImage(file: File) {
     setAnalysing(true);
-
+    setAnalysisError(null);
     try {
       const res = await wardrobeApi.analyzeImage(file);
       const analysis = res.data.analysis;
@@ -72,23 +81,37 @@ export default function UploadClothesPage() {
         ...analysis.colors,
         analysis.category,
         ...analysis.aesthetics.slice(0, 2),
-        ...(analysis.seasons.slice(0, 1)),
+        ...analysis.seasons.slice(0, 1),
       ];
-      setAiTags(tags);
-      // Pre-fill form with AI data
-      if (analysis.category) setCats([analysis.category.charAt(0).toUpperCase() + analysis.category.slice(1)]);
-      if (analysis.colors[0]) setColor(analysis.colors[0]);
+      setAiTags([...new Set(tags)]);
+      const matchingCategory = CATEGORIES.find((category) => category.toLowerCase() === analysis.category.toLowerCase());
+      if (matchingCategory) setCats([matchingCategory]);
+      if (analysis.colors.length) setColor(analysis.colors.join(", "));
+      if (analysis.subcategory) setSubcategory(analysis.subcategory);
       if (analysis.material) setFabric(analysis.material);
+      if (analysis.pattern) setPattern(analysis.pattern);
+      if (analysis.sleeveStyle) setSleeveStyle(analysis.sleeveStyle);
+      if (analysis.fit) setFit(analysis.fit);
+      if (analysis.silhouette) setSilhouette(analysis.silhouette);
+      if (analysis.description) setDescription(analysis.description);
       if (analysis.seasons.length) setSeasons(analysis.seasons);
       if (analysis.occasions.length) setOccasions(analysis.occasions.slice(0, 3));
       if (analysis.aesthetics.length) setStyles(analysis.aesthetics.slice(0, 2));
-    } catch {
-      // AI failed — use mock tags
-      setAiTags(["Clothing", "New item"]);
+    } catch (error) {
+      setAiTags([]);
+      setAnalysisError(error instanceof Error ? error.message : "AI analysis could not be completed.");
     } finally {
       setAnalysing(false);
       setStep("details");
     }
+  }
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    setImageFile(file);
+    await analyseImage(file);
   }
 
   return (
@@ -146,7 +169,7 @@ export default function UploadClothesPage() {
               {step !== "review" && (
                 <button
                   type="button"
-                  onClick={() => { setPreview(null); setImageFile(null); setStep("upload"); setAiTags([]); }}
+                  onClick={() => { setPreview(null); setImageFile(null); setStep("upload"); setAiTags([]); setAnalysisError(null); }}
                   className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 backdrop-blur text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
@@ -198,9 +221,15 @@ export default function UploadClothesPage() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <Input label="Item name" placeholder="e.g. Ivory Satin Blouse" value={name} onChange={(e) => setName(e.target.value)} />
                       <Input label="Brand" placeholder="e.g. Zara, COS, Thrift" value={brand} onChange={(e) => setBrand(e.target.value)} />
-                      <Input label="Colour" placeholder="e.g. Ivory" value={color} onChange={(e) => setColor(e.target.value)} />
+                      <Input label="Colours" placeholder="e.g. Ivory, Camel" value={color} onChange={(e) => setColor(e.target.value)} />
                       <Input label="Fabric" placeholder="e.g. Satin, Cotton, Linen" value={fabric} onChange={(e) => setFabric(e.target.value)} />
+                      <Input label="Subcategory" placeholder="e.g. Button-up blouse" value={subcategory} onChange={(e) => setSubcategory(e.target.value)} />
+                      <Input label="Pattern" placeholder="e.g. Solid, Stripe" value={pattern} onChange={(e) => setPattern(e.target.value)} />
+                      <Input label="Sleeve style" placeholder="e.g. Long sleeve" value={sleeveStyle} onChange={(e) => setSleeveStyle(e.target.value)} />
+                      <Input label="Fit" placeholder="e.g. Relaxed" value={fit} onChange={(e) => setFit(e.target.value)} />
+                      <Input label="Silhouette" placeholder="e.g. Straight" value={silhouette} onChange={(e) => setSilhouette(e.target.value)} />
                     </div>
+                    <Textarea label="Short description" placeholder="A concise description of this item" value={description} onChange={(e) => setDescription(e.target.value)} />
 
                     <div>
                       <p className="text-label-xs mb-2">Category</p>
@@ -220,14 +249,22 @@ export default function UploadClothesPage() {
                     </div>
                   </div>
 
+                  {analysisError && imageFile && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-2.5 text-sm text-muted-foreground">
+                      <span>AI suggestions are unavailable: {analysisError}</span>
+                      <Button size="sm" variant="outline" onClick={() => analyseImage(imageFile)} disabled={analysing}>Retry analysis</Button>
+                    </div>
+                  )}
+
                   {createMutation.isError && (
-                    <p className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-                      {(createMutation.error as Error).message}
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+                      <span>{(createMutation.error as Error).message}</span>
+                      <Button size="sm" variant="outline" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>Retry upload</Button>
+                    </div>
                   )}
 
                   <div className="flex gap-3">
-                    <Button variant="outline" onClick={() => { setStep("upload"); setPreview(null); setImageFile(null); setAiTags([]); }} className="gap-2">
+                    <Button variant="outline" onClick={() => { setStep("upload"); setPreview(null); setImageFile(null); setAiTags([]); setAnalysisError(null); }} className="gap-2">
                       <ArrowLeft className="h-4 w-4" /> Back
                     </Button>
                     <Button
@@ -236,7 +273,7 @@ export default function UploadClothesPage() {
                       loading={createMutation.isPending}
                     >
                       <Sparkles className="h-4 w-4" />
-                      Add to wardrobe
+                      {createMutation.isPending ? (imageFile ? "Uploading securely…" : "Saving item…") : "Add to wardrobe"}
                     </Button>
                   </div>
                 </>
@@ -250,7 +287,7 @@ export default function UploadClothesPage() {
                     <Button variant="outline" size="sm" asChild>
                       <Link href="/wardrobe">View wardrobe</Link>
                     </Button>
-                    <Button size="sm" onClick={() => { setStep("upload"); setPreview(null); setImageFile(null); setName(""); setBrand(""); setColor(""); setFabric(""); setCats([]); setSeasons([]); setOccasions([]); setStyles([]); setAiTags([]); }}>
+                    <Button size="sm" onClick={() => { setStep("upload"); setPreview(null); setImageFile(null); setName(""); setBrand(""); setColor(""); setFabric(""); setSubcategory(""); setPattern(""); setSleeveStyle(""); setFit(""); setSilhouette(""); setDescription(""); setCats([]); setSeasons([]); setOccasions([]); setStyles([]); setAiTags([]); setAnalysisError(null); }}>
                       Add another
                     </Button>
                   </div>

@@ -42,7 +42,19 @@ All profile endpoints resolve ownership from the authenticated session; none acc
 
 Password changes require the current password and revoke all refresh sessions. Email changes are intentionally separate from normal profile updates: a password-confirmed request creates a hashed, six-digit code for the proposed address; only a successful confirmation applies the address and then revokes sessions. Codes expire after 10 minutes, are rate-limited on resend, and allow five failed attempts. Account deletion requires both the current password and the literal `DELETE` confirmation before cascade deletion.
 
-Avatar files are validated and sent to Cloudinary when `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are available. PostgreSQL retains only the resulting URL. Development without Cloudinary uses a clearly logged placeholder fallback.
+Avatar and wardrobe files are validated and sent to Cloudinary when `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are available. PostgreSQL retains only the resulting URL and metadata; uploads fail closed when storage is unavailable.
+
+## Secure wardrobe image storage
+
+Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `apps/server/.env`; these credentials remain server-only. Wardrobe files are uploaded by the API using a server-generated random storage key—never a browser-provided path or unrestricted client credential. The API accepts only JPEG, PNG, and WebP after inspecting the actual file bytes, limits files to 10 MB, verifies safe dimensions, and rate-limits multipart upload requests.
+
+Each primary image stores its provider asset ID, storage key, URL, MIME type, byte size, and dimensions in `ClothingImage`. Replacing an image writes the replacement first and only then removes the old provider asset; a failed upload leaves the item unchanged. Removing an image deletes its tracked primary asset and restores the local wardrobe placeholder. `IMAGE_STORAGE_VISIBILITY=private` deliberately fails closed until a signed private-delivery endpoint is configured, preventing accidental private-asset exposure.
+
+## AI clothing analysis
+
+`POST /api/v1/wardrobe/analyze-image` is authenticated and upload-rate-limited. It validates the actual image bytes before creating a server-side data URL for the configured vision provider. Responses are accepted only when they satisfy the strict Zod clothing-analysis schema, which does not allow identifiers, URLs, or ownership fields. Transient provider failures receive one bounded retry; timeouts, rate limits, malformed output, and unavailable configuration receive safe API errors.
+
+Set `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and a vision-capable `AI_VISION_MODEL` (for example, `gpt-4o`). `OPENAI_BASE_URL` can point to an OpenAI-compatible gateway. `AI_PROVIDER=mock` is development-only and must be selected explicitly. Validated non-sensitive analysis is cached by image SHA-256 plus provider/model for `AI_ANALYSIS_CACHE_MINUTES`; the original image is never put in this cache.
 
 ## Digital wardrobe
 
