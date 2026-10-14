@@ -1,92 +1,75 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, Sparkles } from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { OutfitCard } from "@/components/ui/outfit-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { outfitSuggestions } from "@/lib/mock-data";
-import { useAppStore } from "@/store/app-store";
+import { outfitsApi } from "@/lib/api-client";
+import type { OutfitSuggestion } from "@/lib/types";
 
 export default function SavedOutfitsPage() {
-  const { savedOutfitIds, toggleSavedOutfit } = useAppStore();
-  const saved = outfitSuggestions.filter((o) => savedOutfitIds.includes(o.id));
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const savedQuery = useQuery({ queryKey: ["saved-outfits"], queryFn: () => outfitsApi.getSaved({ perPage: 50 }) });
+  const remove = useMutation({
+    mutationFn: (id: string) => outfitsApi.deleteSaved(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["saved-outfits"] }),
+  });
+  const saved = savedQuery.data?.data ?? [];
+  const cards: OutfitSuggestion[] = saved.map(({ id, outfit }) => ({
+    id,
+    title: outfit.title,
+    mood: outfit.aesthetic ?? "Styled look",
+    occasion: outfit.occasion ?? "Any occasion",
+    weather: outfit.season ?? "All seasons",
+    items: outfit.items.map(({ clothingItem }) => clothingItem?.name ?? "Removed item"),
+    accent: "",
+    notes: outfit.explanation ?? "Saved from your wardrobe.",
+  }));
+
+  function removeSaved(id: string) {
+    if (window.confirm("Remove this outfit from your saved looks?")) remove.mutate(id);
+  }
 
   return (
-    <DashboardShell
-      heading="Saved Outfits"
-      subheading="Your favourite AI-generated looks, ready to wear again."
-    >
+    <DashboardShell heading="Saved Outfits" subheading="Your favourite AI-generated looks, ready to wear again.">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            {saved.length} saved {saved.length === 1 ? "outfit" : "outfits"}
-          </p>
+          <p className="text-sm text-muted-foreground">{savedQuery.data?.meta.total ?? 0} saved {(savedQuery.data?.meta.total ?? 0) === 1 ? "outfit" : "outfits"}</p>
           {saved.length > 0 && <Badge variant="accent"><Heart className="h-3 w-3" /> Collection</Badge>}
         </div>
-        <Button size="sm" asChild>
-          <Link href="/outfits">
-            <Sparkles className="h-3.5 w-3.5" /> Generate more
-          </Link>
-        </Button>
+        <Button size="sm" asChild><Link href="/outfits"><Sparkles className="h-3.5 w-3.5" /> Generate more</Link></Button>
       </div>
 
-      {saved.length === 0 ? (
-        <EmptyState
-          icon={<Heart className="h-6 w-6" />}
-          title="No saved outfits yet"
+      {savedQuery.isPending ? (
+        <div role="status" className="rounded-3xl border border-border/60 bg-card p-8 text-sm text-muted-foreground">Loading saved outfits…</div>
+      ) : savedQuery.error ? (
+        <EmptyState icon={<Heart className="h-6 w-6" />} title="Could not load saved outfits" description={savedQuery.error.message}
+          action={{ label: "Try again", onClick: () => void savedQuery.refetch() }} />
+      ) : saved.length === 0 ? (
+        <EmptyState icon={<Heart className="h-6 w-6" />} title="No saved outfits yet"
           description="Generate outfits and save the ones you love. They'll appear here."
-          action={{ label: "Generate outfits", onClick: () => {} }}
-        />
+          action={{ label: "Generate outfits", onClick: () => { window.location.href = "/outfits"; } }} />
       ) : (
-        <motion.div
-          initial="hidden"
-          animate="show"
-          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
-          className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3"
-        >
-          {saved.map((outfit, i) => (
-            <OutfitCard
-              key={outfit.id}
-              outfit={outfit}
-              isSaved
-              onToggleSave={toggleSavedOutfit}
-              index={i}
-            />
-          ))}
-        </motion.div>
-      )}
-
-      {/* Lookbooks section */}
-      {saved.length > 0 && (
-        <div className="mt-4">
-          <p className="text-label-sm mb-4">Lookbooks</p>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {[
-              ["Weekend Neutrals",   "Brunch, errands, and coffee meetings."],
-              ["Office Minimal",     "Clean tailoring and polished neutrals."],
-              ["Date Night Moods",   "Elegant high-contrast looks with statement accents."],
-            ].map(([title, desc]) => (
-              <div
-                key={title as string}
-                className="group rounded-3xl border border-border/60 bg-card p-5 shadow-card cursor-pointer hover:shadow-card-hover transition-all hover:-translate-y-0.5"
-              >
-                <div className="mb-4 overflow-hidden rounded-2xl bg-gradient-to-br from-[#faf5ef] to-[#e8d5bc] dark:from-[#1a1410] dark:to-[#2e1f16] p-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    {[0,1,2,3].map((n) => (
-                      <div key={n} className="h-16 rounded-xl bg-background/50" />
-                    ))}
-                  </div>
-                </div>
-                <p className="font-semibold text-sm">{title}</p>
-                <p className="mt-1 text-xs text-muted-foreground leading-5">{desc}</p>
-              </div>
+        <>
+          {remove.error && <p role="alert" className="text-sm text-destructive">{remove.error.message}</p>}
+          <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
+            className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {cards.map((outfit, index) => (
+              <OutfitCard key={outfit.id} outfit={outfit} isSaved onToggleSave={removeSaved}
+                onRegenerate={(savedId) => {
+                  const anchorId = saved.find((entry) => entry.id === savedId)?.outfit.items[0]?.clothingItem?.id;
+                  if (anchorId) router.push(`/style-item/${anchorId}`);
+                }} index={index} />
             ))}
-          </div>
-        </div>
+          </motion.div>
+        </>
       )}
     </DashboardShell>
   );

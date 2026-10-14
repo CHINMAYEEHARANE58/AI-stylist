@@ -66,3 +66,29 @@ describe('OpenAIProvider outfit generation', () => {
       .rejects.toMatchObject<AppError>({ code: 'AI_MALFORMED_OUTFIT_RESPONSE', statusCode: 502 });
   });
 });
+
+describe('OpenAIProvider style this item', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const anchor = { id: 'anchor-a', name: 'Ivory Top', category: 'tops', colors: ['Ivory'], seasons: ['Summer'], occasions: ['Office'], aesthetics: ['Minimal'] };
+  const companion = { id: 'companion-a', name: 'Black Trousers', category: 'trousers', colors: ['Black'], seasons: ['Summer'], occasions: ['Office'], aesthetics: ['Minimal'] };
+
+  it('passes selected options and accepts structured styling output', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(providerResponse(JSON.stringify({ looks: [{
+      aesthetic: 'Minimal', clothingItemIds: ['anchor-a', 'companion-a'], occasion: 'Office',
+      explanation: 'Black trousers balance the light anchor for a polished office look.',
+    }] })));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await new OpenAIProvider('test-key', 'test-model').styleThisItem(anchor, [anchor, companion], { aesthetics: ['Minimal'], occasion: 'Office', season: 'Summer' });
+    expect(result.looks[0].clothingItemIds).toEqual(['anchor-a', 'companion-a']);
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { messages: Array<{ content: string }> };
+    expect(requestBody.messages[1].content).toContain('Requested season: Summer');
+  });
+
+  it('rejects malformed styling output', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(providerResponse(JSON.stringify({ looks: [{
+      aesthetic: 'Minimal', clothingItemIds: ['anchor-a'], occasion: 'Office', explanation: 'Incomplete look.',
+    }] }))));
+    await expect(new OpenAIProvider('test-key', 'test-model').styleThisItem(anchor, [anchor, companion]))
+      .rejects.toMatchObject<AppError>({ code: 'AI_MALFORMED_STYLE_RESPONSE', statusCode: 502 });
+  });
+});

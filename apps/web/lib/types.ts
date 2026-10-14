@@ -32,7 +32,7 @@ export interface OutfitSuggestion {
   items: string[];
   accent: string;
   notes: string;
-  score: number;
+  score?: number;
   savedAt?: string;
 }
 

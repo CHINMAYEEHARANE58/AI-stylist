@@ -72,6 +72,12 @@ export interface StyleThisItemResult {
   model: string;
 }
 
+export interface StyleItemOptions {
+  aesthetics?: string[];
+  occasion?: string;
+  season?: string;
+}
+
 export interface StyleLook {
   aesthetic: string;
   clothingItemIds: string[];
@@ -126,6 +132,7 @@ export interface AIProvider {
   styleThisItem(
     item: WardrobeItemSummary,
     wardrobe: WardrobeItemSummary[],
+    options?: StyleItemOptions,
   ): Promise<StyleThisItemResult>;
   analyzeInspirationImage(
     imageUrl: string,

@@ -7,10 +7,8 @@ import { useAppStore } from "@/store/app-store";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading } = useAppStore((state) => ({
-    isAuthenticated: state.isAuthenticated,
-    isLoading: state.isLoading,
-  }));
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+  const isLoading = useAppStore((state) => state.isLoading);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace(`/login?from=${encodeURIComponent(pathname)}`);

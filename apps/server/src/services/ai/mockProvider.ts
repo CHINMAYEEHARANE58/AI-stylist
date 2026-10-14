@@ -6,7 +6,7 @@
 import type {
   AIProvider, ChatMessage, ClothingAnalysis, InspirationAnalysisResult,
   OutfitGenerationInput, OutfitGenerationResult, StyleThisItemResult,
-  WardrobeItemSummary,
+  StyleItemOptions, WardrobeItemSummary,
 } from './types';
 
 const AESTHETICS = ['Minimal', 'Classic', 'Elegant', 'Casual', 'Streetwear', 'Quiet luxury'];
@@ -74,17 +74,18 @@ export class MockAIProvider implements AIProvider {
   async styleThisItem(
     item: WardrobeItemSummary,
     wardrobe: WardrobeItemSummary[],
+    options: StyleItemOptions = {},
   ): Promise<StyleThisItemResult> {
     const others = wardrobe.filter((w) => w.id !== item.id);
-    const aestheticNames = ['Casual', 'Elegant', 'Office', 'Party'];
+    const aestheticNames = options.aesthetics?.length ? options.aesthetics : ['Casual', 'Elegant', 'Office', 'Party'];
 
     const looks = aestheticNames.map((aesthetic) => {
       const companions = pickN(others, Math.min(2, others.length));
       return {
         aesthetic,
         clothingItemIds: [item.id, ...companions.map((c) => c.id)],
-        explanation: `${item.name} works beautifully for a ${aesthetic.toLowerCase()} look${companions.length ? ` paired with ${companions.map((c) => c.name).join(' and ')}` : ''}.`,
-        occasion: aesthetic === 'Office' ? 'Work' : aesthetic === 'Party' ? 'Evening' : aesthetic,
+        explanation: `${companions.map((c) => c.name).join(' and ')} complement ${item.name} with a coordinated palette and balanced proportions for a ${aesthetic.toLowerCase()} look.`,
+        occasion: options.occasion ?? (aesthetic === 'Office' ? 'Work' : aesthetic === 'Party' ? 'Evening' : aesthetic),
       };
     });
 

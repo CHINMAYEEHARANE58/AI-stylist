@@ -241,7 +241,8 @@ export const wardrobeApi = {
   list: (params: WardrobeListParams = {}) => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") q.set(k, String(v));
+      if (v === undefined || v === "" || Array.isArray(v) && v.length === 0) return;
+      q.set(k, Array.isArray(v) ? v.join(",") : String(v));
     });
     const qs = q.toString();
     return apiFetch<ApiPaginatedResponse<ClothingItemApi>>(`/wardrobe${qs ? `?${qs}` : ""}`);
@@ -365,6 +366,20 @@ export interface GeneratedOutfitApi {
   score: number;
 }
 
+export interface StyleItemLookApi {
+  aesthetic: string;
+  clothingItemIds: string[];
+  clothingItems: ClothingItemApi[];
+  explanation: string;
+  occasion: string;
+}
+
+export interface StyleItemOptions {
+  aesthetics?: string[];
+  occasion?: string;
+  season?: string;
+}
+
 export const outfitsApi = {
   generate: (data: {
     occasion?: string;
@@ -381,20 +396,16 @@ export const outfitsApi = {
       body: JSON.stringify(data),
     }),
 
-  styleItem: (itemId: string) =>
+  styleItem: (itemId: string, options: StyleItemOptions = {}) =>
     apiFetch<ApiSuccessResponse<{
       itemId: string;
       itemName: string;
-      looks: Array<{
-        aesthetic: string;
-        clothingItemIds: string[];
-        clothingItems: ClothingItemApi[];
-        explanation: string;
-        occasion: string;
-      }>;
+      provider?: string;
+      model?: string;
+      looks: StyleItemLookApi[];
     }>>("/outfits/style-item", {
       method: "POST",
-      body: JSON.stringify({ itemId }),
+      body: JSON.stringify({ itemId, ...options }),
     }),
 
   save: (data: {

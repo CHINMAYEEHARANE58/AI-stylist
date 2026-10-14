@@ -15,7 +15,7 @@ router.use(authOriginGuard);
 router.get( '/saved',              asyncHandler(getSavedOutfits));
 router.get( '/collections',        asyncHandler(getCollections));
 router.post('/generate',           outfitGenerationLimiter, asyncHandler(generateOutfitRecommendations));
-router.post('/style-item',         asyncHandler(styleSingleItem));
+router.post('/style-item',         outfitGenerationLimiter, asyncHandler(styleSingleItem));
 router.post('/',                   asyncHandler(saveOutfit));
 router.delete('/saved/:id',        asyncHandler(deleteSavedOutfit));
 router.post('/:id/favorite',       asyncHandler(toggleOutfitFavorite));

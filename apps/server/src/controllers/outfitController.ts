@@ -6,10 +6,11 @@ import { AppError } from '../utils/AppError';
 import { getAIProvider } from '../services/ai/index';
 import type { WardrobeItemSummary } from '../services/ai/types';
 import { keepEligibleOutfits } from '../services/ai/outfitGeneration';
+import { keepEligibleStyleLooks, styleItemResultSchema } from '../services/ai/styleItemGeneration';
 
 function param(req: Request, key: string): string {
   const v = req.params[key];
-  if (!v || Array.isArray(v)) throw new Error(`Missing param: ${key}`);
+  if (!v || Array.isArray(v)) {throw new Error(`Missing param: ${key}`);}
   return v;
 }
 
@@ -43,8 +44,11 @@ const saveOutfitSchema = z.object({
 }).strict();
 
 const styleItemSchema = z.object({
-  itemId: z.string().cuid(),
-});
+  itemId: z.string().trim().min(1).max(120),
+  aesthetics: z.array(z.string().trim().min(1).max(100)).max(4).default([]),
+  occasion: z.string().trim().min(1).max(80).optional(),
+  season: z.string().trim().min(1).max(80).optional(),
+}).strict();
 
 const listSavedSchema = z.object({
   page:       z.coerce.number().int().min(1).default(1),
@@ -104,7 +108,7 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
   // Validate anchorItemId belongs to user
   if (input.anchorItemId) {
     const anchorItem = wardrobe.find((w) => w.id === input.anchorItemId);
-    if (!anchorItem) throw new AppError('Anchor item not found in your wardrobe.', 404);
+    if (!anchorItem) {throw new AppError('Anchor item not found in your wardrobe.', 404);}
   }
 
   const eligibleWardrobe = wardrobe.filter((item) => matchesGenerationFilters(item, input));
@@ -169,53 +173,85 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
 
 export async function styleSingleItem(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
-  const { itemId } = styleItemSchema.parse(req.body);
+  const input = styleItemSchema.parse(req.body);
 
-  // Verify ownership
   const item = await prisma.clothingItem.findFirst({
-    where: { id: itemId, userId },
+    where: { id: input.itemId, userId, archived: false },
     select: { id: true, name: true, category: true, colors: true, seasons: true, occasions: true, aesthetics: true, pattern: true, material: true },
   });
-  if (!item) throw new AppError('Item not found in your wardrobe.', 404);
+  if (!item) {
+    throw new AppError('Item not found in your available wardrobe.', 404);
+  }
 
-  const wardrobe = await getUserWardrobeForAI(userId);
+  const candidateItems = await prisma.clothingItem.findMany({
+    where: { userId, archived: false, id: { not: item.id } },
+    select: { id: true, name: true, category: true, colors: true, seasons: true, occasions: true, aesthetics: true, pattern: true, material: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 200,
+  });
+  const matches = (values: string[], requested?: string, includeAllSeason = false) => !requested || values.length === 0
+    || values.some((value) => value.toLowerCase() === requested.toLowerCase()
+      || (includeAllSeason && value.toLowerCase() === 'all season'));
+  const companions = candidateItems
+    .filter((candidate) => matches(candidate.seasons, input.season, true) && matches(candidate.occasions, input.occasion))
+    .sort((a, b) => {
+      const preferenceMatches = (values: string[]) => input.aesthetics.some((desired) => values.some((value) => value.toLowerCase() === desired.toLowerCase())) ? 1 : 0;
+      return preferenceMatches(b.aesthetics) - preferenceMatches(a.aesthetics);
+    })
+    .slice(0, 59);
+
+  if (companions.length === 0) {
+    ApiResponse.success(res, { itemId: item.id, itemName: item.name, looks: [] },
+      'No suitable companion pieces are available. Adjust the occasion or season, or add more items to your wardrobe.');
+    return;
+  }
+
+  const wardrobe: WardrobeItemSummary[] = [item, ...companions].map((piece) => ({
+    ...piece,
+    pattern: piece.pattern ?? undefined,
+    material: piece.material ?? undefined,
+  }));
   const ai = getAIProvider();
 
-  const result = await ai.styleThisItem(
-    { id: item.id, name: item.name, category: item.category, colors: item.colors, seasons: item.seasons, occasions: item.occasions, aesthetics: item.aesthetics, pattern: item.pattern ?? undefined, material: item.material ?? undefined },
-    wardrobe,
-  );
+  const result = await ai.styleThisItem(wardrobe[0], wardrobe, input);
+  const parsed = styleItemResultSchema.safeParse({ looks: result.looks });
+  if (!parsed.success) {
+    throw new AppError('The AI provider returned invalid looks. Please try again.', 502, true, 'AI_MALFORMED_STYLE_RESPONSE');
+  }
 
-  // Validate all returned IDs
-  const validIds = new Set(wardrobe.map((w) => w.id));
-  result.looks.forEach((look) => {
-    look.clothingItemIds = look.clothingItemIds.filter((id) => validIds.has(id));
-  });
+  // Query fresh records after inference. A deleted, archived, or foreign item
+  // invalidates the entire proposed look, including if it is the anchor.
+  const allIds = [...new Set(parsed.data.looks.flatMap((look) => look.clothingItemIds))];
+  const currentItems = await prisma.clothingItem.findMany({ where: { id: { in: allIds }, userId, archived: false } });
+  const itemMap = new Map(currentItems.map((record) => [record.id, record]));
+  if (!itemMap.has(item.id)) {
+    throw new AppError('The selected item is no longer available.', 404);
+  }
+  const offeredIds = new Set(wardrobe.map((piece) => piece.id));
+  const currentEligibleIds = new Set([...offeredIds].filter((id) => itemMap.has(id)));
+  const safeLooks = keepEligibleStyleLooks(parsed.data.looks, item.id, currentEligibleIds);
+  if (safeLooks.length === 0) {
+    throw new AppError('The AI could not create a valid look from your available items. Please regenerate.', 502, true, 'AI_INVALID_ITEM_IDS');
+  }
 
-  // Enrich with item data
-  const allIds = [...new Set(result.looks.flatMap((l) => l.clothingItemIds))];
-  const itemsById = allIds.length > 0
-    ? await prisma.clothingItem.findMany({ where: { id: { in: allIds }, userId } })
-    : [];
-  const itemMap = new Map(itemsById.map((i) => [i.id, i]));
-
-  const looksWithItems = result.looks.map((l) => ({
+  const looksWithItems = safeLooks.map((l) => ({
     ...l,
-    clothingItems: l.clothingItemIds.map((id) => itemMap.get(id)).filter(Boolean),
+    clothingItems: l.clothingItemIds.map((id) => itemMap.get(id)),
   }));
 
-  void prisma.aIStylingHistory.create({
+  await prisma.aIStylingHistory.create({
     data: {
       userId,
       requestType: 'style_item',
-      input: { itemId } as object,
-      output: result as object,
+      input: input as object,
+      output: { itemId: item.id, looks: safeLooks } as object,
       provider: result.provider,
       model: result.model,
     },
   });
 
-  ApiResponse.success(res, { ...result, looks: looksWithItems }, 'Styling looks generated.');
+  ApiResponse.success(res, { itemId: item.id, itemName: item.name, provider: result.provider, model: result.model, looks: looksWithItems },
+    'Styling looks generated. Save a look if you want to keep it.');
 }
 
 export async function saveOutfit(req: Request, res: Response): Promise<void> {
@@ -229,7 +265,7 @@ export async function saveOutfit(req: Request, res: Response): Promise<void> {
   });
   const foundIds = new Set(items.map((i) => i.id));
   const unauthorized = data.clothingItemIds.filter((id) => !foundIds.has(id));
-  if (unauthorized.length > 0) throw new AppError('One or more items not found in your wardrobe.', 403);
+  if (unauthorized.length > 0) {throw new AppError('One or more items not found in your wardrobe.', 403);}
 
   const outfit = await prisma.outfit.create({
     data: {
@@ -267,7 +303,7 @@ export async function getSavedOutfits(req: Request, res: Response): Promise<void
   const query  = listSavedSchema.parse(req.query);
 
   const where: Record<string, unknown> = { userId };
-  if (query.collection) where['collection'] = query.collection;
+  if (query.collection) {where['collection'] = query.collection;}
 
   const [total, saved] = await Promise.all([
     prisma.savedOutfit.count({ where }),
@@ -300,7 +336,7 @@ export async function deleteSavedOutfit(req: Request, res: Response): Promise<vo
   const existing = await prisma.savedOutfit.findFirst({
     where: { id, userId },
   });
-  if (!existing) throw new AppError('Saved outfit not found.', 404);
+  if (!existing) {throw new AppError('Saved outfit not found.', 404);}
 
   await prisma.savedOutfit.delete({ where: { id: existing.id } });
   ApiResponse.noContent(res);
@@ -314,10 +350,10 @@ export async function toggleOutfitFavorite(req: Request, res: Response): Promise
   const saved = await prisma.savedOutfit.findFirst({
     where: { outfitId, userId },
   });
-  if (!saved) throw new AppError('Outfit not found.', 404);
+  if (!saved) {throw new AppError('Outfit not found.', 404);}
 
   const outfit = await prisma.outfit.findUnique({ where: { id: outfitId }, select: { favorite: true } });
-  if (!outfit) throw new AppError('Outfit not found.', 404);
+  if (!outfit) {throw new AppError('Outfit not found.', 404);}
 
   const updated = await prisma.outfit.update({
     where: { id: outfitId },

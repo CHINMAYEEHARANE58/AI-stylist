@@ -12,10 +12,11 @@ interface OutfitCardProps {
   outfit: OutfitSuggestion;
   isSaved?: boolean;
   onToggleSave?: (id: string) => void;
+  onRegenerate?: (id: string) => void;
   index?: number;
 }
 
-export function OutfitCard({ outfit, isSaved = false, onToggleSave, index = 0 }: OutfitCardProps) {
+export function OutfitCard({ outfit, isSaved = false, onToggleSave, onRegenerate, index = 0 }: OutfitCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -45,9 +46,9 @@ export function OutfitCard({ outfit, isSaved = false, onToggleSave, index = 0 }:
           </div>
 
           {/* Confidence badge */}
-          <div className="absolute right-7 top-7 rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-primary-foreground shadow-sm">
+          {outfit.score !== undefined && <div className="absolute right-7 top-7 rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-primary-foreground shadow-sm">
             {outfit.score}%
-          </div>
+          </div>}
         </div>
 
         {/* Info */}
@@ -63,7 +64,7 @@ export function OutfitCard({ outfit, isSaved = false, onToggleSave, index = 0 }:
           <p className="mt-3 flex-1 text-sm leading-6 text-muted-foreground">{outfit.notes}</p>
 
           {/* Star rating */}
-          <div className="mt-4 flex items-center gap-1">
+          {outfit.score !== undefined && <div className="mt-4 flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((n) => (
               <Star
                 key={n}
@@ -74,7 +75,7 @@ export function OutfitCard({ outfit, isSaved = false, onToggleSave, index = 0 }:
               />
             ))}
             <span className="ml-2 text-xs text-muted-foreground">Rates future picks</span>
-          </div>
+          </div>}
 
           {/* Actions */}
           <div className="mt-4 flex flex-wrap gap-2 border-t border-border/50 pt-4">
@@ -86,7 +87,7 @@ export function OutfitCard({ outfit, isSaved = false, onToggleSave, index = 0 }:
               <Heart className={cn("h-3.5 w-3.5", isSaved && "fill-current")} />
               {isSaved ? "Saved" : "Save"}
             </Button>
-            <Button size="sm" variant="ghost">
+            <Button size="sm" variant="ghost" onClick={() => onRegenerate?.(outfit.id)} title={onRegenerate ? "Style an item from this outfit again" : "Regenerate from the generator above"}>
               <RefreshCcw className="h-3.5 w-3.5" />
             </Button>
             <Button size="sm" variant="ghost">
