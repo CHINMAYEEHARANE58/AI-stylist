@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  generateOutfitRecommendations, getSavedOutfits, saveOutfit,
+  generateOutfitRecommendations, getSavedOutfits, getSavedOutfit, updateSavedOutfit, saveOutfit,
   deleteSavedOutfit, styleSingleItem, toggleOutfitFavorite, getCollections,
 } from '../controllers/outfitController';
 import { requireAuth } from '../middleware/requireAuth';
@@ -13,6 +13,8 @@ router.use(requireAuth);
 router.use(authOriginGuard);
 
 router.get( '/saved',              asyncHandler(getSavedOutfits));
+router.get( '/saved/:id',          asyncHandler(getSavedOutfit));
+router.patch('/saved/:id',         asyncHandler(updateSavedOutfit));
 router.get( '/collections',        asyncHandler(getCollections));
 router.post('/generate',           outfitGenerationLimiter, asyncHandler(generateOutfitRecommendations));
 router.post('/style-item',         outfitGenerationLimiter, asyncHandler(styleSingleItem));

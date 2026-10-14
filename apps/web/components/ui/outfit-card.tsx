@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Download, Heart, RefreshCcw, Share2, Star } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -13,10 +14,11 @@ interface OutfitCardProps {
   isSaved?: boolean;
   onToggleSave?: (id: string) => void;
   onRegenerate?: (id: string) => void;
+  detailHref?: string;
   index?: number;
 }
 
-export function OutfitCard({ outfit, isSaved = false, onToggleSave, onRegenerate, index = 0 }: OutfitCardProps) {
+export function OutfitCard({ outfit, isSaved = false, onToggleSave, onRegenerate, detailHref, index = 0 }: OutfitCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -55,7 +57,8 @@ export function OutfitCard({ outfit, isSaved = false, onToggleSave, onRegenerate
         <div className="flex flex-1 flex-col p-5">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-display-sm">{outfit.title}</p>
+              {detailHref ? <Link href={detailHref} className="text-display-sm hover:text-brand-dark transition-colors">{outfit.title}</Link>
+                : <p className="text-display-sm">{outfit.title}</p>}
               <p className="mt-1 text-label-xs">{outfit.occasion} · {outfit.mood}</p>
             </div>
             <Badge variant="muted" size="sm">{outfit.weather}</Badge>

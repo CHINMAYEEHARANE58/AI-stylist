@@ -4,9 +4,9 @@
  * Available only through the explicit development `AI_PROVIDER=mock` setting.
  */
 import type {
-  AIProvider, ChatMessage, ClothingAnalysis, InspirationAnalysisResult,
+  AIProvider, ChatMessage, ClothingAnalysis, InspirationAttributes,
   OutfitGenerationInput, OutfitGenerationResult, StyleThisItemResult,
-  StyleItemOptions, WardrobeItemSummary,
+  StyleItemOptions, StylistChatResult, WardrobeItemSummary,
 } from './types';
 
 const AESTHETICS = ['Minimal', 'Classic', 'Elegant', 'Casual', 'Streetwear', 'Quiet luxury'];
@@ -92,49 +92,32 @@ export class MockAIProvider implements AIProvider {
     return { itemId: item.id, itemName: item.name, looks, provider: this.name, model: this.model };
   }
 
-  async analyzeInspirationImage(
-    _imageUrl: string,
-    wardrobe: WardrobeItemSummary[],
-  ): Promise<InspirationAnalysisResult> {
-    const matched = pickN(wardrobe, Math.min(3, wardrobe.length)).map((w) => ({
-      clothingItemId: w.id,
-      score: 70 + Math.floor(Math.random() * 28),
-      reason: `${w.name} matches the ${pick(['colour palette', 'silhouette', 'aesthetic', 'occasion'])} of the inspiration.`,
-    }));
-
-    const allCategories = ['tops', 'bottoms', 'outerwear', 'shoes', 'accessories'];
-    const wardrobeCategories = new Set(wardrobe.map((w) => w.category));
-    const missing = allCategories.filter((c) => !wardrobeCategories.has(c));
-
+  async analyzeInspirationImage(_imageDataUrl: string): Promise<InspirationAttributes> {
     return {
-      detectedStyle: pick(['Quiet luxury', 'Minimal chic', 'Street polish', 'Romantic neutral']),
-      colors: pickN(['Ivory', 'Camel', 'Black', 'Beige', 'Gold', 'Navy'], 3),
-      categories: pickN(['tops', 'bottoms', 'outerwear', 'accessories'], 3),
-      aesthetics: pickN(AESTHETICS, 2),
-      silhouettes: [pick(['Relaxed', 'Structured', 'Flowing', 'Fitted', 'Oversized'])],
-      matchedItems: matched,
-      missingCategories: missing.slice(0, 2),
-      recreationSuggestion: {
-        clothingItemIds: matched.map((m) => m.clothingItemId),
-        explanation: `Using items from your wardrobe that best match the inspiration's aesthetic.`,
-        overallScore: matched.length > 0
-          ? Math.round(matched.reduce((s, m) => s + m.score, 0) / matched.length)
-          : 0,
-      },
-      provider: this.name,
-      model: this.model,
+      detectedStyle: 'Development mock — no image understanding',
+      colors: ['Ivory', 'Black'],
+      patterns: ['Solid'],
+      aesthetics: ['Minimal'],
+      silhouettes: ['Relaxed', 'Tailored'],
+      layers: ['Top over bottom'],
+      accessories: ['Simple necklace'],
+      garments: [
+        { category: 'tops', description: 'Ivory top (development fixture)', colors: ['Ivory'], pattern: 'Solid', layer: 'base' },
+        { category: 'bottoms', description: 'Black bottom (development fixture)', colors: ['Black'], pattern: 'Solid', layer: 'base' },
+        { category: 'accessories', description: 'Necklace (development fixture)', colors: ['Gold'], layer: 'accessory' },
+      ],
     };
   }
 
   async chat(
     messages: ChatMessage[],
     wardrobeContext: WardrobeItemSummary[],
-  ): Promise<{ reply: string; suggestions: string[]; provider: string; model: string }> {
+  ): Promise<StylistChatResult> {
     const last = messages[messages.length - 1]?.content?.toLowerCase() ?? '';
 
     let reply: string;
     if (last.includes('outfit') || last.includes('wear') || last.includes('today')) {
-      const items = pickN(wardrobeContext, Math.min(3, wardrobeContext.length));
+      const items = wardrobeContext.slice(0, 3);
       reply = items.length
         ? `Based on your wardrobe, I'd suggest combining ${items.map((i) => i.name).join(', ')} for a polished look.`
         : `Add some items to your wardrobe first and I can suggest outfits!`;
@@ -159,7 +142,15 @@ export class MockAIProvider implements AIProvider {
     }
 
     return {
-      reply,
+      reply: `Development mock (not a real AI reply): ${reply}`,
+      outfits: wardrobeContext.length >= 2 ? [{
+        title: 'Development example outfit',
+        clothingItemIds: wardrobeContext.slice(0, 3).map((item) => item.id),
+        explanation: 'Development fixture using owned wardrobe items; not AI-generated styling.',
+      }] : [],
+      shoppingSuggestions: wardrobeContext.length < 2 ? [{
+        name: 'Versatile coordinating piece', reason: 'Development fixture: more wardrobe options are needed for a combination.',
+      }] : [],
       suggestions: [
         'What should I wear today?',
         'Style my favourite item for a date night.',

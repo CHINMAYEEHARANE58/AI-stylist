@@ -351,8 +351,18 @@ export interface OutfitApi {
     id: string;
     slot?: string;
     position: number;
-    clothingItem: ClothingItemApi;
+    snapshotName: string;
+    snapshotCategory: string;
+    clothingItem: ClothingItemApi | null;
   }>;
+}
+
+export interface SavedOutfitApi {
+  id: string;
+  collection: string | null;
+  notes: string | null;
+  createdAt: string;
+  outfit: OutfitApi;
 }
 
 export interface GeneratedOutfitApi {
@@ -426,12 +436,30 @@ export const outfitsApi = {
       body: JSON.stringify(data),
     }),
 
-  getSaved: (params: { page?: number; perPage?: number; collection?: string } = {}) => {
+  getSaved: (params: {
+    page?: number;
+    perPage?: number;
+    search?: string;
+    collection?: string;
+    occasion?: string;
+    aesthetic?: string;
+    favorite?: boolean;
+    sortBy?: "savedAt" | "title" | "updatedAt";
+    sortDir?: "asc" | "desc";
+  } = {}) => {
     const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => v !== undefined && q.set(k, String(v)));
+    Object.entries(params).forEach(([k, v]) => v !== undefined && v !== "" && q.set(k, String(v)));
     const qs = q.toString();
-    return apiFetch<ApiPaginatedResponse<{ outfit: OutfitApi; collection?: string; createdAt: string; id: string }>>(`/outfits/saved${qs ? `?${qs}` : ""}`);
+    return apiFetch<ApiPaginatedResponse<SavedOutfitApi>>(`/outfits/saved${qs ? `?${qs}` : ""}`);
   },
+
+  getSavedOne: (id: string) => apiFetch<ApiSuccessResponse<SavedOutfitApi>>(`/outfits/saved/${id}`),
+
+  updateSaved: (id: string, data: { title?: string; notes?: string | null; collection?: string | null }) =>
+    apiFetch<ApiSuccessResponse<SavedOutfitApi>>(`/outfits/saved/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
   deleteSaved: (id: string) =>
     apiFetch<void>(`/outfits/saved/${id}`, { method: "DELETE" }),
@@ -568,7 +596,7 @@ export const insightsApi = {
     apiFetch<ApiSuccessResponse<{
       stats: { wardrobeItems: number; savedOutfits: number; unreadNotifications: number };
       recentWardrobeItems: ClothingItemApi[];
-      recentSavedOutfits: Array<{ outfit: OutfitApi }>;
+      recentSavedOutfits: SavedOutfitApi[];
       notifications: NotificationApi[];
     }>>("/insights/dashboard"),
 
@@ -606,44 +634,64 @@ export const insightsApi = {
 
 // ── Inspiration / Pinterest ────────────────────────────────────────────
 
-export interface InspirationAnalysisApi {
-  inspirationId: string;
+export interface InspirationDetailApi {
+  id: string;
+  title: string | null;
   imageUrl: string;
+  createdAt: string;
   analysis: {
     detectedStyle: string;
     colors: string[];
-    categories: string[];
+    patterns: string[];
     aesthetics: string[];
+    silhouettes: string[];
+    layers: string[];
+    accessories: string[];
+    garments: Array<{ category: string; description: string; colors: string[]; pattern?: string; silhouette?: string; layer?: string }>;
     matchedItems: Array<{
       clothingItemId: string;
+      itemName: string;
+      category: string;
       score: number;
       reason: string;
-      item?: ClothingItemApi;
+      available: boolean;
+      item: ClothingItemApi | null;
     }>;
-    missingCategories: string[];
+    missingPieces: Array<{ category: string; description: string; colors: string[]; reason: string }>;
     recreationSuggestion: {
       clothingItemIds: string[];
       explanation: string;
       overallScore: number;
     };
+    matchingMethod: string;
+    provider: string;
+    model: string;
   };
 }
 
+export interface InspirationSummaryApi {
+  id: string;
+  title: string | null;
+  imageUrl: string;
+  createdAt: string;
+  attributeScore: number | null;
+  matchingMethod: string | null;
+}
+
 export const inspirationApi = {
-  analyze: (imageFileOrUrl: File | string) => {
-    if (typeof imageFileOrUrl === "string") {
-      return apiFetch<ApiSuccessResponse<InspirationAnalysisApi>>("/inspiration/analyze", {
-        method: "POST",
-        body: JSON.stringify({ imageUrl: imageFileOrUrl }),
-      });
-    }
+  analyze: (imageFile: File) => {
     const fd = new FormData();
-    fd.append("image", imageFileOrUrl);
-    return apiUpload<ApiSuccessResponse<InspirationAnalysisApi>>("/inspiration/analyze", fd);
+    fd.append("image", imageFile);
+    return apiUpload<ApiSuccessResponse<InspirationDetailApi>>("/inspiration/analyze", fd);
   },
 
   getSaved: (page = 1) =>
-    apiFetch<ApiPaginatedResponse<{ id: string; imageUrl: string; createdAt: string }>>(`/inspiration?page=${page}`),
+    apiFetch<ApiPaginatedResponse<InspirationSummaryApi>>(`/inspiration?page=${page}`),
+
+  getOne: (id: string) =>
+    apiFetch<ApiSuccessResponse<InspirationDetailApi>>(`/inspiration/${encodeURIComponent(id)}`),
+
+  imageUrl: (id: string) => `${API_BASE_URL}/inspiration/${encodeURIComponent(id)}/image`,
 
   delete: (id: string) =>
     apiFetch<void>(`/inspiration/${id}`, { method: "DELETE" }),
@@ -652,12 +700,65 @@ export const inspirationApi = {
 // ── Stylist Chat ──────────────────────────────────────────────────────
 
 export const stylistApi = {
-  chat: (message: string, history: Array<{ role: "user" | "assistant"; content: string }> = []) =>
-    apiFetch<ApiSuccessResponse<{ reply: string; suggestions: string[]; provider: string }>>("/stylist/chat", {
+  chat: (message: string, conversationId?: string) =>
+    apiFetch<ApiSuccessResponse<StylistChatReplyApi>>("/stylist/chat", {
       method: "POST",
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, ...(conversationId ? { conversationId } : {}) }),
     }),
+  listConversations: () =>
+    apiFetch<ApiSuccessResponse<StylistConversationSummaryApi[]>>("/stylist/conversations"),
+  getConversation: (id: string) =>
+    apiFetch<ApiSuccessResponse<StylistConversationApi>>(`/stylist/conversations/${encodeURIComponent(id)}`),
+  deleteConversation: (id: string) =>
+    apiFetch<void>(`/stylist/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
+
+export interface StylistOwnedItemApi {
+  id: string;
+  name: string;
+  category: string;
+  imageUrl: string;
+}
+
+export interface StylistChatResultApi {
+  reply: string;
+  outfits: Array<{ title: string; clothingItemIds: string[]; explanation: string;
+    items: Array<StylistOwnedItemApi | null> }>;
+  shoppingSuggestions: Array<{ name: string; reason: string }>;
+  suggestions: string[];
+}
+
+export interface StylistChatReplyApi extends StylistChatResultApi {
+  conversationId: string;
+  provider: string;
+  model: string;
+}
+
+export interface StylistConversationSummaryApi {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StylistMessageApi {
+  id: string;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  result: StylistChatResultApi | null;
+  provider: string | null;
+  model: string | null;
+  createdAt: string;
+}
+
+export interface StylistConversationApi {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: StylistMessageApi[];
+}
 
 // ── Shopping ──────────────────────────────────────────────────────────
 

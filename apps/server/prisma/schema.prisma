@@ -54,6 +54,7 @@ model User {
   savedOutfits                SavedOutfit[]
   recommendations             AIRecommendation[]
   stylingHistory              AIStylingHistory[]
+  stylistConversations        StylistConversation[]
   inspirationImages           InspirationImage[]
   inspirationMatches          InspirationMatch[]
   shoppingRecommendations     ShoppingRecommendation[]
@@ -263,12 +264,14 @@ model Outfit {
 model OutfitItem {
   id             String       @id @default(cuid())
   outfitId       String
-  clothingItemId String
+  clothingItemId String?
+  snapshotName   String       @db.VarChar(160)
+  snapshotCategory String     @db.VarChar(80)
   slot           String?      @db.VarChar(40)
   position       Int          @default(0)
   createdAt      DateTime     @default(now())
   outfit         Outfit       @relation(fields: [outfitId], references: [id], onDelete: Cascade)
-  clothingItem   ClothingItem @relation(fields: [clothingItemId], references: [id], onDelete: Restrict)
+  clothingItem   ClothingItem? @relation(fields: [clothingItemId], references: [id], onDelete: SetNull)
 
   @@unique([outfitId, clothingItemId])
   @@index([clothingItemId])
@@ -279,6 +282,7 @@ model SavedOutfit {
   userId     String
   outfitId   String
   collection String?  @db.VarChar(100)
+  notes      String?  @db.VarChar(1000)
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   outfit     Outfit   @relation(fields: [outfitId], references: [id], onDelete: Cascade)
@@ -315,6 +319,40 @@ model AIStylingHistory {
   @@index([userId, requestType, createdAt])
 }
 
+// Private chat content is stored only here (not duplicated in AIStylingHistory).
+// Deleting a user or conversation cascades to its messages.
+model StylistConversation {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String           @db.VarChar(120)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  StylistMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+enum StylistMessageRole {
+  USER
+  ASSISTANT
+}
+
+model StylistMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  role           StylistMessageRole
+  content        String              @db.VarChar(3000)
+  result         Json?
+  provider       String?             @db.VarChar(80)
+  model          String?             @db.VarChar(120)
+  createdAt      DateTime            @default(now())
+  conversation   StylistConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([role, createdAt])
+}
+
 // Stores only a hash and validated, non-sensitive attribute suggestions. This
 // prevents repeated provider requests for the same image without retaining it.
 model ClothingAnalysisCache {
@@ -336,6 +374,13 @@ model InspirationImage {
   userId          String
   imageUrl        String
   imageProviderId String?
+  storageProvider String?            @db.VarChar(20)
+  storageKey      String?
+  contentType     String?            @db.VarChar(40)
+  byteSize        Int?
+  width           Int?
+  height          Int?
+  imageHash       String?            @db.Char(64)
   sourceUrl       String?
   title           String?            @db.VarChar(160)
   analysis        Json?
@@ -352,6 +397,7 @@ model InspirationMatch {
   inspirationImageId String
   userId             String
   similarity         Int
+  matchMethod        String           @default("attribute-v1") @db.VarChar(40)
   matchedItems       Json
   missingItems       Json
   recreation         Json

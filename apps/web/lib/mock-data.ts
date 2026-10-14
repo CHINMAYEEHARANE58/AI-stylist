@@ -276,17 +276,6 @@ export const stylistPrompts = [
   "Suggest colors that match my blazer.",
 ];
 
-export const stylistReplies = [
-  {
-    prompt: "What should I wear today?",
-    reply: "Choose the camel blazer, ivory blouse, relaxed denim, and cream sneakers. Polished enough for meetings, comfortable in warm weather.",
-  },
-  {
-    prompt: "Suggest colors that match my blazer.",
-    reply: "Your strongest palette is ivory, black, camel, denim blue, and gold. Add sage or stone gray for softness without losing structure.",
-  },
-];
-
 export const wardrobeAnalysis = [
   {
     label: "Clothing type detection",

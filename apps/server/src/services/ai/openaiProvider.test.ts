@@ -92,3 +92,42 @@ describe('OpenAIProvider style this item', () => {
       .rejects.toMatchObject<AppError>({ code: 'AI_MALFORMED_STYLE_RESPONSE', statusCode: 502 });
   });
 });
+
+describe('OpenAIProvider stylist chat', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const wardrobe = [{ id: 'owned-top', name: 'Ivory blouse', category: 'tops', colors: ['Ivory'],
+    seasons: ['Summer'], occasions: ['Office'], aesthetics: ['Minimal'] }];
+
+  it('sends exact owned IDs and saved preferences, then validates the model reply', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(providerResponse(JSON.stringify({
+      reply: 'Wear the ivory blouse.', outfits: [{ title: 'Office', clothingItemIds: ['owned-top'], explanation: 'Light and polished.' }],
+      shoppingSuggestions: [], suggestions: ['What shoes?'],
+    })));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await new OpenAIProvider('test-key', 'test-model').chat(
+      [{ role: 'user', content: 'Office outfit?' }], wardrobe,
+      { preferredAesthetics: ['Minimal'], favoriteColors: ['Ivory'] },
+    );
+    expect(result.outfits[0].clothingItemIds).toEqual(['owned-top']);
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { messages: Array<{ content: string }> };
+    expect(request.messages[0].content).toContain('owned-top');
+    expect(request.messages[0].content).toContain('Minimal');
+  });
+
+  it('rejects malformed output and invented IDs instead of displaying a fake reply', async () => {
+    for (const content of ['not-json', JSON.stringify({ reply: 'hi' }), JSON.stringify({
+      reply: 'Wear this.', outfits: [{ title: 'Fake', clothingItemIds: ['foreign-item'], explanation: 'A look.' }],
+      shoppingSuggestions: [], suggestions: [],
+    })]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(providerResponse(content)));
+      await expect(new OpenAIProvider('test-key', 'test-model').chat([{ role: 'user', content: 'Help' }], wardrobe))
+        .rejects.toMatchObject<AppError>({ statusCode: 502 });
+    }
+  });
+
+  it('surfaces provider failures without leaking the provider response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(providerResponse('', 503)));
+    await expect(new OpenAIProvider('test-key', 'test-model').chat([{ role: 'user', content: 'Help' }], wardrobe))
+      .rejects.toMatchObject<AppError>({ code: 'AI_PROVIDER_UNAVAILABLE', statusCode: 503 });
+  });
+});

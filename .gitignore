@@ -6,6 +6,7 @@ coverage
 .env.local
 apps/web/.next
 apps/server/dist
+apps/server/.local-uploads/
 *.tsbuildinfo
 package-lock.json
 yarn.lock

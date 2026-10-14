@@ -139,7 +139,6 @@ export const useAppStore = create<AppState>()(
         wardrobeView: s.wardrobeView,
         favoriteIds: s.favoriteIds,
         wishlistIds: s.wishlistIds,
-        savedOutfitIds: s.savedOutfitIds,
       }),
     },
   ),

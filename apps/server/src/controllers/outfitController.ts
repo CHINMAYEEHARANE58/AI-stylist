@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../config/db';
 import { ApiResponse } from '../utils/ApiResponse';
@@ -28,7 +29,7 @@ const generateSchema = z.object({
 }).strict();
 
 const saveOutfitSchema = z.object({
-  title:        z.string().min(1).max(160),
+  title:        z.string().trim().min(1).max(160),
   occasion:     z.string().max(80).optional(),
   aesthetic:    z.string().max(100).optional(),
   season:       z.string().max(80).optional(),
@@ -37,7 +38,7 @@ const saveOutfitSchema = z.object({
   clothingItemIds: z.array(z.string().trim().min(1).max(120)).min(1).max(20)
     .refine((ids) => new Set(ids).size === ids.length, 'Outfit item IDs must be unique.'),
   slots:        z.record(z.string()).optional(),
-  collection:   z.string().max(100).optional(),
+  collection:   z.string().trim().min(1).max(100).optional(),
   source:       z.enum(['MANUAL', 'AI_GENERATED', 'INSPIRATION_MATCH']).default('MANUAL'),
   provider:     z.string().max(80).optional(),
   providerModel:z.string().max(120).optional(),
@@ -53,9 +54,20 @@ const styleItemSchema = z.object({
 const listSavedSchema = z.object({
   page:       z.coerce.number().int().min(1).default(1),
   perPage:    z.coerce.number().int().min(1).max(50).default(20),
-  collection: z.string().optional(),
+  search:     z.string().trim().max(160).optional(),
+  collection: z.string().trim().min(1).max(100).optional(),
+  occasion:   z.string().trim().min(1).max(80).optional(),
+  aesthetic:  z.string().trim().min(1).max(100).optional(),
   favorite:   z.enum(['true', 'false']).optional(),
-});
+  sortBy:     z.enum(['savedAt', 'title', 'updatedAt']).default('savedAt'),
+  sortDir:    z.enum(['asc', 'desc']).default('desc'),
+}).strict();
+
+const updateSavedSchema = z.object({
+  title:      z.string().trim().min(1).max(160).optional(),
+  notes:      z.string().trim().max(1000).nullable().optional(),
+  collection: z.string().trim().min(1).max(100).nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'Provide a change to save.');
 
 // ── Helper ─────────────────────────────────────────────────────────────
 
@@ -258,41 +270,50 @@ export async function saveOutfit(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
   const data   = saveOutfitSchema.parse(req.body);
 
-  // Verify all clothing items belong to user
-  const items = await prisma.clothingItem.findMany({
-    where: { id: { in: data.clothingItemIds }, userId, archived: false },
-    select: { id: true },
-  });
-  const foundIds = new Set(items.map((i) => i.id));
-  const unauthorized = data.clothingItemIds.filter((id) => !foundIds.has(id));
-  if (unauthorized.length > 0) {throw new AppError('One or more items not found in your wardrobe.', 403);}
+  // Save the outfit, immutable item names/categories, and its collection link
+  // atomically. The database FK still rejects an item concurrently deleted
+  // between ownership validation and insertion.
+  const outfit = await prisma.$transaction(async (tx) => {
+    const items = await tx.clothingItem.findMany({
+      where: { id: { in: data.clothingItemIds }, userId, archived: false },
+      select: { id: true, name: true, category: true },
+    });
+    const itemMap = new Map(items.map((item) => [item.id, item]));
+    if (data.clothingItemIds.some((id) => !itemMap.has(id))) {
+      throw new AppError('One or more items not found in your wardrobe.', 403);
+    }
 
-  const outfit = await prisma.outfit.create({
-    data: {
-      userId,
-      title:       data.title,
-      occasion:    data.occasion,
-      aesthetic:   data.aesthetic,
-      season:      data.season,
-      weather:     data.weather,
-      explanation: data.explanation,
-      source:      data.source,
-      provider:    data.source === 'AI_GENERATED' ? data.provider : undefined,
-      providerModel: data.source === 'AI_GENERATED' ? data.providerModel : undefined,
-      items: {
-        create: data.clothingItemIds.map((id, idx) => ({
-          clothingItemId: id,
-          slot: data.slots?.[id],
-          position: idx,
-        })),
+    const created = await tx.outfit.create({
+      data: {
+        userId,
+        title: data.title,
+        occasion: data.occasion,
+        aesthetic: data.aesthetic,
+        season: data.season,
+        weather: data.weather,
+        explanation: data.explanation,
+        source: data.source,
+        provider: data.source === 'AI_GENERATED' ? data.provider : undefined,
+        providerModel: data.source === 'AI_GENERATED' ? data.providerModel : undefined,
+        items: {
+          create: data.clothingItemIds.map((id, position) => ({
+            clothingItemId: id,
+            snapshotName: itemMap.get(id)!.name,
+            snapshotCategory: itemMap.get(id)!.category,
+            slot: data.slots?.[id],
+            position,
+          })),
+        },
       },
-    },
-    include: { items: { include: { clothingItem: true } } },
-  });
-
-  // Auto-save it
-  await prisma.savedOutfit.create({
-    data: { userId, outfitId: outfit.id, collection: data.collection },
+      include: { items: { include: { clothingItem: true }, orderBy: { position: 'asc' } } },
+    });
+    await tx.savedOutfit.create({ data: { userId, outfitId: created.id, collection: data.collection } });
+    return created;
+  }).catch((error: unknown) => {
+    if ((error as { code?: string }).code === 'P2003') {
+      throw new AppError('One or more wardrobe items are no longer available. Refresh and try again.', 409);
+    }
+    throw error;
   });
 
   ApiResponse.created(res, outfit, 'Outfit saved.');
@@ -302,14 +323,31 @@ export async function getSavedOutfits(req: Request, res: Response): Promise<void
   const userId = req.user!.id;
   const query  = listSavedSchema.parse(req.query);
 
-  const where: Record<string, unknown> = { userId };
-  if (query.collection) {where['collection'] = query.collection;}
+  const outfitFilter: Prisma.OutfitWhereInput = { userId };
+  if (query.occasion) {outfitFilter.occasion = { equals: query.occasion, mode: 'insensitive' };}
+  if (query.aesthetic) {outfitFilter.aesthetic = { equals: query.aesthetic, mode: 'insensitive' };}
+  if (query.favorite) {outfitFilter.favorite = query.favorite === 'true';}
+  const where: Prisma.SavedOutfitWhereInput = { userId, outfit: { is: outfitFilter } };
+  if (query.collection) {where.collection = query.collection;}
+  if (query.search) {
+    where.OR = [
+      { outfit: { is: { title: { contains: query.search, mode: 'insensitive' } } } },
+      { outfit: { is: { explanation: { contains: query.search, mode: 'insensitive' } } } },
+      { outfit: { is: { items: { some: { snapshotName: { contains: query.search, mode: 'insensitive' } } } } } },
+      { notes: { contains: query.search, mode: 'insensitive' } },
+    ];
+  }
+  const orderBy: Prisma.SavedOutfitOrderByWithRelationInput = query.sortBy === 'title'
+    ? { outfit: { title: query.sortDir } }
+    : query.sortBy === 'updatedAt'
+      ? { outfit: { updatedAt: query.sortDir } }
+      : { createdAt: query.sortDir };
 
   const [total, saved] = await Promise.all([
     prisma.savedOutfit.count({ where }),
     prisma.savedOutfit.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip: (query.page - 1) * query.perPage,
       take: query.perPage,
       include: {
@@ -330,11 +368,47 @@ export async function getSavedOutfits(req: Request, res: Response): Promise<void
   });
 }
 
+export async function getSavedOutfit(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.id;
+  const id = param(req, 'id');
+  const saved = await prisma.savedOutfit.findFirst({
+    where: { id, userId, outfit: { userId } },
+    include: { outfit: { include: { items: { include: { clothingItem: true }, orderBy: { position: 'asc' } } } } },
+  });
+  if (!saved) {throw new AppError('Saved outfit not found.', 404);}
+  ApiResponse.success(res, saved);
+}
+
+export async function updateSavedOutfit(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.id;
+  const id = param(req, 'id');
+  const input = updateSavedSchema.parse(req.body);
+  const saved = await prisma.$transaction(async (tx) => {
+    const existing = await tx.savedOutfit.findFirst({
+      where: { id, userId, outfit: { userId } },
+      select: { id: true, outfitId: true },
+    });
+    if (!existing) {throw new AppError('Saved outfit not found.', 404);}
+    if (input.title !== undefined) {
+      await tx.outfit.update({ where: { id: existing.outfitId }, data: { title: input.title } });
+    }
+    await tx.savedOutfit.update({
+      where: { id: existing.id },
+      data: { notes: input.notes, collection: input.collection },
+    });
+    return tx.savedOutfit.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { outfit: { include: { items: { include: { clothingItem: true }, orderBy: { position: 'asc' } } } } },
+    });
+  });
+  ApiResponse.success(res, saved, 'Saved outfit updated.');
+}
+
 export async function deleteSavedOutfit(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
   const id = param(req, 'id');
   const existing = await prisma.savedOutfit.findFirst({
-    where: { id, userId },
+    where: { id, userId, outfit: { userId } },
   });
   if (!existing) {throw new AppError('Saved outfit not found.', 404);}
 
@@ -348,7 +422,7 @@ export async function toggleOutfitFavorite(req: Request, res: Response): Promise
 
   // Ensure user owns the outfit via savedOutfit
   const saved = await prisma.savedOutfit.findFirst({
-    where: { outfitId, userId },
+    where: { outfitId, userId, outfit: { userId } },
   });
   if (!saved) {throw new AppError('Outfit not found.', 404);}
 
@@ -366,7 +440,7 @@ export async function getCollections(req: Request, res: Response): Promise<void>
   const userId = req.user!.id;
   const collections = await prisma.savedOutfit.groupBy({
     by: ['collection'],
-    where: { userId, collection: { not: null } },
+    where: { userId, outfit: { userId }, collection: { not: null } },
     _count: { id: true },
   });
 

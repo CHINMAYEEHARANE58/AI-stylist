@@ -85,26 +85,42 @@ export interface StyleLook {
   occasion: string;
 }
 
-/** Inspiration analysis result */
-export interface InspirationAnalysisResult {
+/** Vision output contains attributes only; the model never receives wardrobe IDs. */
+export interface InspirationAttributes {
   detectedStyle: string;
   colors: string[];
-  categories: string[];
+  patterns: string[];
   aesthetics: string[];
   silhouettes: string[];
+  layers: string[];
+  accessories: string[];
+  garments: Array<{
+    category: 'tops' | 'bottoms' | 'dresses' | 'outerwear' | 'shoes' | 'accessories';
+    description: string;
+    colors: string[];
+    pattern?: string;
+    silhouette?: string;
+    layer?: 'base' | 'middle' | 'outer' | 'accessory';
+  }>;
+}
+
+export interface InspirationAnalysisResult extends InspirationAttributes {
   matchedItems: MatchedItem[];
-  missingCategories: string[];
+  missingPieces: Array<{ category: string; description: string; colors: string[]; reason: string }>;
   recreationSuggestion: {
     clothingItemIds: string[];
     explanation: string;
     overallScore: number;
   };
+  matchingMethod: 'attribute-v1';
   provider: string;
   model: string;
 }
 
 export interface MatchedItem {
   clothingItemId: string;
+  itemName: string;
+  category: string;
   score: number;
   reason: string;
 }
@@ -118,6 +134,8 @@ export interface ChatMessage {
 /** Stylist chat result */
 export interface StylistChatResult {
   reply: string;
+  outfits: Array<{ title: string; clothingItemIds: string[]; explanation: string }>;
+  shoppingSuggestions: Array<{ name: string; reason: string }>;
   suggestions: string[];
   provider: string;
   model: string;
@@ -135,9 +153,8 @@ export interface AIProvider {
     options?: StyleItemOptions,
   ): Promise<StyleThisItemResult>;
   analyzeInspirationImage(
-    imageUrl: string,
-    wardrobe: WardrobeItemSummary[],
-  ): Promise<InspirationAnalysisResult>;
+    imageDataUrl: string,
+  ): Promise<InspirationAttributes>;
   chat(
     messages: ChatMessage[],
     wardrobeContext: WardrobeItemSummary[],

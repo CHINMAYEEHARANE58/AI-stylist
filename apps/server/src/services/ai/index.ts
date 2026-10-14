@@ -52,6 +52,6 @@ export function getAIProvider(): AIProvider {
 export { type AIProvider } from './types';
 export type {
   ClothingAnalysis, GeneratedOutfit, OutfitGenerationInput, OutfitGenerationResult,
-  StyleThisItemResult, StyleLook, InspirationAnalysisResult, MatchedItem,
+  StyleThisItemResult, StyleLook, InspirationAttributes, InspirationAnalysisResult, MatchedItem,
   ChatMessage, StylistChatResult, WardrobeItemSummary,
 } from './types';

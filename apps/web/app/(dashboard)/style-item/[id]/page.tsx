@@ -68,7 +68,7 @@ export default function StyleItemPage({ params }: { params: Promise<{ id: string
   const isSaved = savedLookKeys.includes(activeKey) || Boolean(activeLook && savedQuery.data?.data.some(({ outfit }) =>
     outfit.aesthetic === activeLook.aesthetic && outfit.occasion === activeLook.occasion
       && outfit.items.length === activeLook.clothingItemIds.length
-      && outfit.items.every(({ clothingItem }) => activeLook.clothingItemIds.includes(clothingItem.id))));
+      && outfit.items.every(({ clothingItem }) => clothingItem !== null && activeLook.clothingItemIds.includes(clothingItem.id))));
   const loading = (initialLooks.isPending && Boolean(item)) || regenerate.isPending;
   const error = itemQuery.error ?? regenerate.error ?? (latestResult ? null : initialLooks.error);
 

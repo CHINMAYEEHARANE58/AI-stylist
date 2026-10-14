@@ -45,7 +45,7 @@ ClosetAI is a modern AI-powered fashion styling platform that helps users digiti
 - AI shopping assistant with wardrobe gap notes and cross-store price comparison
 - Personalized AI style profile with insights and visual analytics
 - Weather-based styling endpoint placeholder
-- Saved lookbooks, onboarding tutorial, notifications, and mobile bottom navigation
+- Persistent saved outfits and user-named lookbooks, plus onboarding tutorial, notifications, and mobile bottom navigation
 - Style-around-item panels with casual, elegant, office, and party alternatives
 - Outfit rating, social sharing, saved image, and lookbook export controls
 - Wardrobe analysis for clothing types, colors, patterns, aesthetics, gaps, and usage insights
@@ -134,7 +134,9 @@ Outfits:
 - `POST /api/v1/outfits/generate` — rate-limited, authenticated generation from eligible non-archived wardrobe items
 - `POST /api/v1/outfits/style-item` — authenticated, rate-limited looks around an owned anchor item; accepts optional `aesthetics` (up to four), `occasion`, and `season`
 - `POST /api/v1/outfits` — explicitly saves a reviewed outfit; generation never saves it automatically
-- `GET /api/v1/outfits/saved` and `DELETE /api/v1/outfits/saved/:id`
+- `GET /api/v1/outfits/saved` — owned, paginated saved outfits with search, occasion/aesthetic/favorite/lookbook filters and saved-date/title/edit-date sorting
+- `GET/PATCH/DELETE /api/v1/outfits/saved/:id` — owned details, name/personal-note/lookbook updates, and removal from saved looks
+- `GET /api/v1/outfits/collections` — actual lookbook names and counts
 
 ## AI clothing analysis
 
@@ -156,6 +158,10 @@ Outfit generation uses the same server-only provider configuration. The API subm
 
 Style This Item follows the same provider setup. Open an item from Wardrobe, select aesthetics and optionally an occasion or season, then regenerate to apply those filters. The API verifies the anchor belongs to the caller, excludes archived items, and sends only eligible same-user items to the provider. Each returned look must include the anchor exactly once, contain at least one companion, and use currently owned/available IDs. Invalid whole looks are rejected; generation history stores only validated looks. Save writes the selected look to PostgreSQL, where it appears on Saved Outfits after refresh. When filters leave no companion pieces, the UI offers an adjustment/retry state. Without `OPENAI_API_KEY`, use `AI_PROVIDER=mock` only for clearly labeled development testing; it is not real AI styling.
 
+Saved Outfits and Lookbooks use PostgreSQL, not browser storage. Save is explicit and writes `Outfit`, ordered `OutfitItem` relationships, and `SavedOutfit` atomically. Open a saved card to inspect its pieces, rename it, add personal notes, mark it as a favorite, or enter a lookbook name. The list supports search, filters, sorting, and pagination; lookbook cards show live collection counts. Removing a saved look deletes its `SavedOutfit` association; the underlying `Outfit` remains available to other references such as calendar events.
+
+Deletion policy: deleting a wardrobe item does **not** delete or corrupt a saved outfit. Each `OutfitItem` stores the item name and category at save time. Its live `clothingItemId` is set to `NULL` by the database when the wardrobe item is deleted, and the details screen labels that piece “Removed from wardrobe.” The removed item cannot be used for new generations or saves. Existing records were backfilled by the migration before the foreign key changed to `ON DELETE SET NULL`.
+
 Outfits:
 
 - `GET /api/outfits`
@@ -165,13 +171,22 @@ Outfits:
 
 AI stylist:
 
-- `POST /api/stylist/chat`
-- `POST /api/stylist/rate-outfit`
-- `POST /api/stylist/share-outfit`
+- `POST /api/v1/stylist/chat` — authenticated `{ "message": "...", "conversationId": "optional-existing-id" }`; server-owned context, never client-submitted history
+- `GET /api/v1/stylist/conversations` — recent conversation list
+- `GET /api/v1/stylist/conversations/:id` — owned messages and current owned-item availability
+- `DELETE /api/v1/stylist/conversations/:id` — permanently delete private messages
 
-Pinterest:
+Open **AI Chat Stylist** from dashboard quick actions (or the desktop sidebar). Replies show owned wardrobe pieces as links and generic, optional shopping ideas in a separate section. Chats persist in PostgreSQL through refresh and re-login. The configured server-side provider is required; without `OPENAI_API_KEY`, the endpoint returns a configuration error. `AI_PROVIDER=mock` is an explicitly labeled development fixture, not real AI styling. See [backend setup](docs/backend-foundation.md) for privacy, validation, limits, and retention behavior.
 
-- `POST /api/pinterest/analyze`
+Pinterest inspiration:
+
+- `POST /api/v1/inspiration/analyze` — authenticated multipart upload with an `image` field; analyzes and saves the inspiration.
+- `GET /api/v1/inspiration?page=1` — saved inspirations.
+- `GET /api/v1/inspiration/:id` — analysis, owned matches, and missing pieces.
+- `GET /api/v1/inspiration/:id/image` — owner-checked private image delivery.
+- `DELETE /api/v1/inspiration/:id` — removes the saved analysis and stored image.
+
+Only uploaded JPEG, PNG, and WebP images are accepted. Pinterest URL/board import is disabled until official API access is available; the app does not scrape Pinterest. The vision provider extracts visible garment attributes, then the backend computes an **approximate attribute match** against the signed-in user's wardrobe. The displayed percentage is not image-embedding or exact visual similarity. Analysis is saved when the user presses **Analyse outfit**, and can be revisited from the saved inspirations panel. The **Save recreated look** action explicitly saves currently available owned pieces to Saved Outfits.
 
 Shopping:
 

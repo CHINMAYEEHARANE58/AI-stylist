@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   BarChart3, Compass, LayoutDashboard, Shirt, ShoppingBag,
-  Sparkles, User2, Settings, Bell, ChevronRight, LogOut,
+  Sparkles, User2, Settings, Bell, ChevronRight, LogOut, MessageCircle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ const navLinks = [
   { href: "/dashboard",       label: "Dashboard",  icon: LayoutDashboard },
   { href: "/wardrobe",        label: "Wardrobe",   icon: Shirt },
   { href: "/outfits",         label: "Outfits",    icon: Sparkles },
+  { href: "/stylist",         label: "Stylist",    icon: MessageCircle },
   { href: "/pinterest-match", label: "Match",      icon: Compass },
   { href: "/shopping",        label: "Shopping",   icon: ShoppingBag },
   { href: "/insights",        label: "Insights",   icon: BarChart3 },
@@ -176,7 +177,7 @@ export function DashboardShell({ children, heading, subheading }: DashboardShell
       {/* ── Mobile bottom nav ──────────────────────────── */}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border/50 bg-background/90 backdrop-blur-xl lg:hidden">
         <div className="grid h-16 grid-cols-5">
-          {navLinks.slice(0, 5).map(({ href, label, icon: Icon }) => {
+          {[navLinks[0], navLinks[1], navLinks[2], navLinks[4], navLinks[5]].map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link

@@ -27,6 +27,8 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
   IMAGE_STORAGE_VISIBILITY: z.enum(['public', 'private']).default('public'),
+  INSPIRATION_STORAGE_PROVIDER: z.enum(['cloudinary', 'local']).default('cloudinary'),
+  INSPIRATION_LOCAL_DIR: z.string().min(1).optional(),
 
   // AI providers
   AI_PROVIDER: z.enum(['openai', 'mock']).default('openai'),

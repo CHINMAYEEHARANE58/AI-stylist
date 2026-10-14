@@ -2,25 +2,28 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  ArrowRight, CloudSun, Heart, Plus, Shirt,
+  ArrowRight, CloudSun, Heart, Plus, Shirt, MessageCircle,
   ShoppingBag, Sparkles, TrendingUp, Zap,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { OutfitCard } from "@/components/ui/outfit-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { AIRecommendationCard } from "@/components/ui/ai-recommendation-card";
 import {
-  outfitSuggestions, shoppingRecommendations,
+  shoppingRecommendations,
   wardrobeItems, analytics, notifications as mockNotifications,
 } from "@/lib/mock-data";
-import { insightsApi, shoppingApi, type NotificationApi } from "@/lib/api-client";
+import { insightsApi, outfitsApi, shoppingApi, type NotificationApi } from "@/lib/api-client";
 import { useAppStore } from "@/store/app-store";
+import type { OutfitSuggestion } from "@/lib/types";
 
 const stagger = {
   hidden: {},
@@ -32,10 +35,12 @@ const fadeUp = {
 };
 
 export default function DashboardPage() {
-  const { user, savedOutfitIds, toggleSavedOutfit } = useAppStore();
+  const user = useAppStore((state) => state.user);
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Real data from backend
-  const { data: dashData } = useQuery({
+  const { data: dashData, isPending: dashboardPending, error: dashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: () => insightsApi.dashboard(),
     staleTime: 30_000,
@@ -47,13 +52,32 @@ export default function DashboardPage() {
   });
 
   const stats = dashData?.data?.stats;
+  const recentSaved = dashData?.data?.recentSavedOutfits[0];
+  const recentSavedCard: OutfitSuggestion | null = recentSaved ? {
+    id: recentSaved.id,
+    title: recentSaved.outfit.title,
+    mood: recentSaved.outfit.aesthetic ?? "Styled look",
+    occasion: recentSaved.outfit.occasion ?? "Any occasion",
+    weather: recentSaved.outfit.season ?? "All seasons",
+    items: recentSaved.outfit.items.map((item) => item.clothingItem?.name ?? item.snapshotName),
+    accent: "",
+    notes: recentSaved.notes || recentSaved.outfit.explanation || "Saved from your wardrobe.",
+  } : null;
+  const removeSaved = useMutation({
+    mutationFn: (id: string) => outfitsApi.deleteSaved(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["saved-outfits"] });
+      void queryClient.invalidateQueries({ queryKey: ["outfit-lookbooks"] });
+    },
+  });
   const recentItems = dashData?.data?.recentWardrobeItems ?? [];
   const liveNotifications = dashData?.data?.notifications ?? [];
   const shopItems = shopData?.data ?? [];
 
   // Fallback to mock data when backend not yet seeded
   const displayWardrobeCount = stats?.wardrobeItems ?? wardrobeItems.length;
-  const displaySavedCount    = stats?.savedOutfits ?? 1;
+  const displaySavedCount    = stats?.savedOutfits ?? 0;
   const displayNotifications = liveNotifications.length > 0 ? liveNotifications : mockNotifications.slice(0, 4).map((n) => ({ ...n, createdAt: "" }));
   const displayWardrobeItems = recentItems.length > 0
     ? recentItems.slice(0, 4).map((i) => ({ id: i.id, name: i.name, imageUrl: i.imageUrl, brand: i.brand ?? "" }))
@@ -91,7 +115,7 @@ export default function DashboardPage() {
 
           {[
             { label: "Wardrobe items",    value: displayWardrobeCount, icon: Shirt,   href: "/wardrobe",  color: "text-blue-500" },
-            { label: "Saved outfits",     value: displaySavedCount,    icon: Heart,   href: "/outfits",   color: "text-rose-500" },
+            { label: "Saved outfits",     value: displaySavedCount,    icon: Heart,   href: "/saved-outfits",   color: "text-rose-500" },
           ].map(({ label, value, icon: Icon, href, color }) => (
             <Link key={label} href={href} className="group">
               <div className="flex h-full flex-col justify-between rounded-3xl border border-border/60 bg-card p-6 shadow-card transition-all hover:shadow-card-hover hover:-translate-y-0.5">
@@ -110,12 +134,15 @@ export default function DashboardPage() {
         <motion.div variants={fadeUp} className="grid gap-4 lg:grid-cols-3">
           {/* Today's outfit */}
           <div className="lg:col-span-2">
-            <OutfitCard
-              outfit={outfitSuggestions[2]}
-              isSaved={savedOutfitIds.includes(outfitSuggestions[2].id)}
-              onToggleSave={toggleSavedOutfit}
-              index={0}
-            />
+            {dashboardPending ? <div role="status" className="min-h-64 rounded-3xl border border-border/60 bg-card p-8 text-sm text-muted-foreground">Loading your saved looks…</div>
+              : dashboardError ? <EmptyState icon={<Heart className="h-6 w-6" />} title="Could not load saved looks"
+                description={dashboardError.message} action={{ label: "Try again", onClick: () => void refetchDashboard() }} />
+              : recentSavedCard ? <OutfitCard outfit={recentSavedCard} isSaved detailHref={`/saved-outfits/${recentSavedCard.id}`}
+                onToggleSave={(id) => { if (window.confirm("Remove this outfit from your saved looks?")) removeSaved.mutate(id); }} index={0} />
+              : <EmptyState icon={<Heart className="h-6 w-6" />} title="No saved outfit yet"
+                description="Save an outfit you love and it will appear here."
+                action={{ label: "Generate an outfit", onClick: () => router.push("/outfits") }} />}
+            {removeSaved.error && <p role="alert" className="mt-2 text-sm text-destructive">{removeSaved.error.message}</p>}
           </div>
 
           {/* Quick actions */}
@@ -123,6 +150,7 @@ export default function DashboardPage() {
             <p className="text-label-sm px-1">Quick actions</p>
             {[
               { label: "Generate new outfit", icon: Sparkles,   href: "/outfits",         variant: "default" as const },
+              { label: "Ask AI stylist",       icon: MessageCircle, href: "/stylist",       variant: "outline" as const },
               { label: "Add wardrobe item",   icon: Plus,        href: "/wardrobe/upload", variant: "outline" as const },
               { label: "Match a Pinterest look", icon: TrendingUp, href: "/pinterest-match", variant: "outline" as const },
               { label: "Browse shopping picks",  icon: ShoppingBag, href: "/shopping",       variant: "outline" as const },
