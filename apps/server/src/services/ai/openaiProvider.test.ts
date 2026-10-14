@@ -130,4 +130,10 @@ describe('OpenAIProvider stylist chat', () => {
     await expect(new OpenAIProvider('test-key', 'test-model').chat([{ role: 'user', content: 'Help' }], wardrobe))
       .rejects.toMatchObject<AppError>({ code: 'AI_PROVIDER_UNAVAILABLE', statusCode: 503 });
   });
+
+  it('surfaces a safe timeout error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    await expect(new OpenAIProvider('test-key', 'test-model').chat([{ role: 'user', content: 'Help' }], wardrobe))
+      .rejects.toMatchObject<AppError>({ code: 'AI_TIMEOUT', statusCode: 504 });
+  });
 });

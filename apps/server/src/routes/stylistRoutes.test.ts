@@ -131,6 +131,9 @@ describe('private stylist chat API', () => {
     expect(mocks.clothingFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: requestUser, archived: false } }));
     expect(mocks.providerChat.mock.calls[0][2]).toEqual({ preferredAesthetics: ['Minimal'], favoriteColors: ['Ivory'] });
     expect(storedMessages).toHaveLength(2);
+    const usageWrite = mocks.historyCreate.mock.calls[0][0] as { data: { input: unknown; output: unknown } };
+    expect(usageWrite.data.input).toEqual({ conversationId });
+    expect(JSON.stringify(usageWrite.data)).not.toContain('Office outfit?');
     const list = await request(app).get('/stylist/conversations').set('Cookie', cookie(requestUser));
     expect(list.body.data[0].messageCount).toBe(2);
     const detail = await request(app).get(`/stylist/conversations/${conversationId}`).set('Cookie', cookie(requestUser));
