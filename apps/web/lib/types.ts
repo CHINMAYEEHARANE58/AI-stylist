@@ -47,17 +47,21 @@ export interface Testimonial {
 export interface ShoppingRecommendation {
   id: string;
   title: string;
-  price: number;
-  originalPrice?: number;
-  rating: number;
+  price: number | null;
+  originalPrice?: number | null;
+  rating?: number | null;
   reviewCount?: number;
-  brand: string;
-  store: string;
-  similarity: number;
+  brand: string | null;
+  store: string | null;
+  similarity: number | null;
   image: string;
-  url: string;
+  url: string | null;
   category?: string;
   tags?: string[];
+  reason?: string | null;
+  isSample?: boolean;
+  available?: boolean;
+  currency?: string | null;
 }
 
 export interface PriceComparison {

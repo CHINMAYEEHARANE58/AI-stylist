@@ -1,4 +1,5 @@
-import mongoose, { type Document, type Model, Schema, Types } from 'mongoose';
+import type { Types } from 'mongoose';
+import mongoose, { type Document, type Model, Schema } from 'mongoose';
 
 export interface IOutfit extends Document {
   userId: Types.ObjectId;

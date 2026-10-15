@@ -105,7 +105,8 @@ export async function chat(req: Request, res: Response): Promise<void> {
         occasions: true, aesthetics: true, pattern: true, material: true },
       orderBy: { updatedAt: 'desc' }, take: 500 }),
     prisma.userPreference.findUnique({ where: { userId },
-      select: { preferredAesthetics: true, favoriteColors: true } }),
+      select: { preferredAesthetics: true, favoriteColors: true, preferredCategories: true,
+        preferredOccasions: true, preferredSeasons: true, fitPreferences: true, styleDislikes: true } }),
   ]);
   const preferences = userPrefs ?? undefined;
   const wardrobeContext = selectRelevantWardrobe(wardrobeItems.map(toContext), message, preferences);

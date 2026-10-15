@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AppError } from '../../utils/AppError';
-import type { StylistChatResult, WardrobeItemSummary } from './types';
+import type { OutfitGenerationInput, StylistChatResult, WardrobeItemSummary } from './types';
 
 const outfitIdeaSchema = z.object({
   title: z.string().trim().min(1).max(100),
@@ -40,13 +40,16 @@ export function validateStylistChatResult(
 export function selectRelevantWardrobe(
   items: WardrobeItemSummary[],
   message: string,
-  preferences?: { preferredAesthetics: string[]; favoriteColors: string[] },
+  preferences?: OutfitGenerationInput['userProfile'],
   limit = 60,
 ): WardrobeItemSummary[] {
   const terms = new Set(message.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []);
   const preferred = new Set([
     ...(preferences?.preferredAesthetics ?? []),
     ...(preferences?.favoriteColors ?? []),
+    ...(preferences?.preferredCategories ?? []),
+    ...(preferences?.preferredOccasions ?? []),
+    ...(preferences?.preferredSeasons ?? []),
   ].map((value) => value.toLowerCase()));
   const scored = items.map((item, index) => {
     const fields = [item.name, item.category, item.pattern, item.material,
@@ -54,7 +57,8 @@ export function selectRelevantWardrobe(
       .filter(Boolean).join(' ').toLowerCase();
     const matches = [...terms].filter((term) => fields.includes(term)).length;
     const preferenceMatches = [...preferred].filter((value) => fields.includes(value)).length;
-    return { item, index, score: matches * 10 + preferenceMatches * 2 };
+    const disliked = (preferences?.styleDislikes ?? []).some((value) => fields.includes(value.toLowerCase()));
+    return { item, index, score: matches * 10 + preferenceMatches * 2 - (disliked ? 100 : 0) };
   });
   scored.sort((a, b) => b.score - a.score || a.index - b.index);
   return scored.slice(0, limit).map(({ item }) => item);

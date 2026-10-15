@@ -84,6 +84,14 @@ model UserPreference {
   preferredAesthetics     String[] @default([])
   favoriteColors          String[] @default([])
   stylePreferences        String[] @default([])
+  preferredCategories     String[] @default([])
+  preferredOccasions      String[] @default([])
+  fitPreferences          String[] @default([])
+  preferredSeasons        String[] @default([])
+  styleDislikes           String[] @default([])
+  budgetCurrency          String?  @db.Char(3)
+  budgetMax               Decimal? @db.Decimal(10, 2)
+  weatherCity             String?  @db.VarChar(120)
   notificationPreferences Json?
   privacyPreferences      Json?
   aiPreferences           Json?
@@ -417,6 +425,8 @@ model Product {
   category        String?                  @db.VarChar(80)
   description     String?                  @db.VarChar(2000)
   imageUrl        String?
+  isSample        Boolean                  @default(false)
+  isActive        Boolean                  @default(true)
   attributes      Json?
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
@@ -432,18 +442,21 @@ model ProductOffer {
   productId     String
   retailer      String   @db.VarChar(100)
   retailerSku   String?  @db.VarChar(200)
+  provider      String   @default("legacy") @db.VarChar(80)
   productUrl    String
   price         Decimal  @db.Decimal(10, 2)
   originalPrice Decimal? @db.Decimal(10, 2)
   currency      String   @default("INR") @db.Char(3)
   availability  String?  @db.VarChar(80)
   observedAt    DateTime @default(now())
+  expiresAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, retailer, productUrl])
   @@index([productId, price])
+  @@index([productId, observedAt])
 }
 
 model ShoppingRecommendation {
@@ -457,6 +470,7 @@ model ShoppingRecommendation {
   reason        String?         @db.VarChar(1000)
   similarity    Int?
   productData   Json?
+  signals       Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -466,6 +480,8 @@ model ShoppingRecommendation {
 
   @@index([userId, createdAt])
   @@index([productId])
+  @@unique([userId, productId])
+  @@unique([id, userId])
 }
 
 model RetailerOffer {
@@ -490,7 +506,7 @@ model WishlistItem {
   shoppingRecommendationId String
   createdAt                DateTime               @default(now())
   user                     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  recommendation           ShoppingRecommendation @relation(fields: [shoppingRecommendationId], references: [id], onDelete: Cascade)
+  recommendation           ShoppingRecommendation @relation(fields: [shoppingRecommendationId, userId], references: [id, userId], onDelete: Cascade)
 
   @@unique([userId, shoppingRecommendationId])
 }
@@ -501,11 +517,13 @@ model Notification {
   type      NotificationType @default(SYSTEM)
   title     String           @db.VarChar(160)
   message   String           @db.VarChar(1000)
+  dedupeKey String?          @db.VarChar(160)
   readAt    DateTime?
   createdAt DateTime         @default(now())
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
+  @@unique([userId, dedupeKey])
 }
 
 model CalendarEvent {
@@ -515,6 +533,8 @@ model CalendarEvent {
   title       String   @db.VarChar(160)
   description String?  @db.VarChar(1000)
   location    String?  @db.VarChar(240)
+  eventType   String?  @db.VarChar(80)
+  timeZone    String   @default("UTC") @db.VarChar(80)
   startsAt    DateTime
   endsAt      DateTime
   allDay      Boolean  @default(false)
@@ -524,6 +544,7 @@ model CalendarEvent {
   outfit      Outfit?  @relation(fields: [outfitId], references: [id], onDelete: SetNull)
 
   @@index([userId, startsAt])
+  @@index([userId, endsAt])
   @@index([outfitId])
 }
 

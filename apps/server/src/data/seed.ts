@@ -16,7 +16,7 @@ if (env !== 'development') {
 }
 
 async function main() {
-  console.log('🌱  Seeding development database...');
+  console.info('🌱  Seeding development database...');
 
   // ── Dev user ───────────────────────────────────────────────────────
   const passwordHash = await bcrypt.hash('development-seed-only', 12);
@@ -51,7 +51,7 @@ async function main() {
   });
 
   const wardrobeId = user.wardrobe?.id;
-  if (!wardrobeId) throw new Error('Wardrobe not created');
+  if (!wardrobeId) { throw new Error('Wardrobe not created'); }
 
   // ── Wardrobe items ─────────────────────────────────────────────────
   const clothingItems = [
@@ -128,6 +128,32 @@ async function main() {
     createdItems.push(created);
   }
 
+  // Illustrative catalog records only. No merchant, price, availability, or buy link
+  // is invented. Production never serves isSample products.
+  const sampleProducts = [
+    { key: 'neutral-loafers', name: 'Neutral loafers (sample)', category: 'shoes', imageUrl: '/shopping-1.svg',
+      attributes: { colors: ['Ivory', 'Camel'], aesthetics: ['Quiet luxury', 'Minimal classic'], occasions: ['Office', 'Brunch'] } },
+    { key: 'linen-trousers', name: 'Relaxed linen trousers (sample)', category: 'bottoms', imageUrl: '/shopping-2.svg',
+      attributes: { colors: ['Ivory'], aesthetics: ['Minimal classic'], occasions: ['Office', 'Vacation'] } },
+    { key: 'everyday-tote', name: 'Everyday tote (sample)', category: 'accessories', imageUrl: '/shopping-3.svg',
+      attributes: { colors: ['Camel'], aesthetics: ['Quiet luxury'], occasions: ['Office', 'Travel'] } },
+    { key: 'summer-dress', name: 'Summer dress (sample)', category: 'dresses', imageUrl: '/shopping-1.svg',
+      attributes: { colors: ['Ivory'], aesthetics: ['Minimal classic'], occasions: ['Brunch', 'Vacation'] } },
+    { key: 'tailored-shorts', name: 'Tailored shorts (sample)', category: 'bottoms', imageUrl: '/shopping-2.svg',
+      attributes: { colors: ['Black'], aesthetics: ['Street polish'], occasions: ['Casual', 'Travel'] } },
+    { key: 'lightweight-cardigan', name: 'Lightweight cardigan (sample)', category: 'outerwear', imageUrl: '/shopping-3.svg',
+      attributes: { colors: ['Ivory'], aesthetics: ['Quiet luxury'], occasions: ['Office', 'Travel'] } },
+  ];
+  for (const sample of sampleProducts) {
+    await prisma.product.upsert({
+      where: { source_sourceProductId: { source: 'development-sample', sourceProductId: sample.key } },
+      create: { source: 'development-sample', sourceProductId: sample.key, name: sample.name,
+        category: sample.category, imageUrl: sample.imageUrl, attributes: sample.attributes, isSample: true },
+      update: { name: sample.name, category: sample.category, imageUrl: sample.imageUrl,
+        attributes: sample.attributes, isSample: true },
+    });
+  }
+
   // ── Seed notifications ────────────────────────────────────────────
   const notifCount = await prisma.notification.count({ where: { userId: user.id } });
   if (notifCount === 0) {
@@ -135,17 +161,26 @@ async function main() {
       data: [
         { userId: user.id, type: 'OUTFIT',  title: 'Today\'s outfit ready', message: 'Daily outfit ready: rainy-day office look with your camel blazer.', readAt: null },
         { userId: user.id, type: 'WEATHER', title: 'Weather alert', message: 'Weather alert: carry lightweight outerwear for evening showers today.', readAt: null },
-        { userId: user.id, type: 'SALE',    title: 'Sale alert', message: 'Neutral sneakers dropped 18% on Ajio — matches your wardrobe gap.', readAt: null },
+        { userId: user.id, type: 'SALE',    title: 'Shopping catalog demo', message: 'Sample shopping products are available for preview; no live retailer offers are configured.', readAt: null },
         { userId: user.id, type: 'TREND',   title: 'Trend update', message: 'Ivory layers and gold accents match your 3 most-saved looks this week.', readAt: new Date() },
         { userId: user.id, type: 'SYSTEM',  title: 'Welcome to ClosetAI', message: 'Your wardrobe is set up. Generate your first outfit to get started!', readAt: new Date() },
       ],
     });
   }
 
-  console.log(`✅  Seed complete.`);
-  console.log(`    Test user: phase1.seed@closetai.test`);
-  console.log('    Password: development seed only (not a production account)');
-  console.log(`    Items: ${createdItems.length} wardrobe items`);
+  // Correct an older development fixture that asserted an unverified sale.
+  await prisma.notification.updateMany({
+    where: { userId: user.id, type: 'SALE', title: 'Sale alert',
+      message: 'Neutral sneakers dropped 18% on Ajio — matches your wardrobe gap.' },
+    data: { title: 'Shopping catalog demo',
+      message: 'Sample shopping products are available for preview; no live retailer offers are configured.' },
+  });
+
+  console.info(`✅  Seed complete.`);
+  console.info(`    Test user: phase1.seed@closetai.test`);
+  console.info('    Password: development seed only (not a production account)');
+  console.info(`    Items: ${createdItems.length} wardrobe items`);
+  console.info(`    Catalog: ${sampleProducts.length} labeled sample products (no live offers)`);
 }
 
 main()

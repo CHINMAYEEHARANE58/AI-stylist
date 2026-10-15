@@ -6,22 +6,17 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowRight, CloudSun, Heart, Plus, Shirt, MessageCircle,
-  ShoppingBag, Sparkles, TrendingUp, Zap,
+  ShoppingBag, Sparkles, TrendingUp,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { OutfitCard } from "@/components/ui/outfit-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AIRecommendationCard } from "@/components/ui/ai-recommendation-card";
-import {
-  shoppingRecommendations,
-  wardrobeItems, analytics, notifications as mockNotifications,
-} from "@/lib/mock-data";
-import { insightsApi, outfitsApi, shoppingApi, type NotificationApi } from "@/lib/api-client";
+import { insightsApi, outfitsApi, shoppingApi, weatherApi } from "@/lib/api-client";
 import { useAppStore } from "@/store/app-store";
 import type { OutfitSuggestion } from "@/lib/types";
 
@@ -46,10 +41,15 @@ export default function DashboardPage() {
     staleTime: 30_000,
   });
   const { data: shopData } = useQuery({
-    queryKey: ["shopping", {}],
+    queryKey: ["shopping-dashboard"],
     queryFn: () => shoppingApi.list({ perPage: 3 }),
     staleTime: 60_000,
   });
+  const weatherQuery = useQuery({ queryKey: ["dashboard-weather"], queryFn: () => weatherApi.current(), staleTime: 15 * 60_000 });
+  const insightsQuery = useQuery({ queryKey: ["dashboard-style-insights"], queryFn: () => insightsApi.wardrobe(), staleTime: 60_000 });
+  const weather = weatherQuery.data?.data;
+  const colorCounts = insightsQuery.data?.data.colors ?? [];
+  const colorTotal = colorCounts.reduce((sum, color) => sum + color.value, 0);
 
   const stats = dashData?.data?.stats;
   const recentSaved = dashData?.data?.recentSavedOutfits[0];
@@ -74,18 +74,25 @@ export default function DashboardPage() {
   const recentItems = dashData?.data?.recentWardrobeItems ?? [];
   const liveNotifications = dashData?.data?.notifications ?? [];
   const shopItems = shopData?.data ?? [];
+  const toggleShopWishlist = useMutation({
+    mutationFn: async (item: typeof shopItems[number]) => item.wishlisted
+      ? shoppingApi.removeFromWishlist(item.id) : shoppingApi.addToWishlist(item.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["shopping-dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["shopping"] });
+      void queryClient.invalidateQueries({ queryKey: ["shopping-wishlist"] });
+    },
+  });
 
-  // Fallback to mock data when backend not yet seeded
-  const displayWardrobeCount = stats?.wardrobeItems ?? wardrobeItems.length;
+  const displayWardrobeCount = stats?.wardrobeItems ?? "—";
   const displaySavedCount    = stats?.savedOutfits ?? 0;
-  const displayNotifications = liveNotifications.length > 0 ? liveNotifications : mockNotifications.slice(0, 4).map((n) => ({ ...n, createdAt: "" }));
-  const displayWardrobeItems = recentItems.length > 0
-    ? recentItems.slice(0, 4).map((i) => ({ id: i.id, name: i.name, imageUrl: i.imageUrl, brand: i.brand ?? "" }))
-    : wardrobeItems.slice(0, 4).map((i) => ({ id: i.id, name: i.name, imageUrl: i.image, brand: i.brand }));
+  const displayNotifications = liveNotifications;
+  const displayWardrobeItems = recentItems.slice(0, 4).map((i) => ({ id: i.id, name: i.name, imageUrl: i.imageUrl, brand: i.brand ?? "" }));
   const displayShop = shopItems.slice(0, 3).map((i) => ({
     id: i.id, title: i.title, price: i.price, originalPrice: i.originalPrice,
-    rating: i.rating, brand: i.brand, store: i.brand, similarity: i.similarity,
-    image: i.imageUrl, url: "#",
+    brand: i.brand, store: i.store, similarity: i.relevance,
+    image: i.imageUrl ?? "/shopping-1.svg", url: i.url, reason: i.reason,
+    isSample: i.isSample, available: i.available, currency: i.currency,
   }));
 
   return (
@@ -101,15 +108,15 @@ export default function DashboardPage() {
           <div className="relative col-span-2 overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-[#faf5ef] to-[#e8d5bc] p-6 shadow-card dark:from-[#1a1410] dark:to-[#2e1f16]">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-label-sm text-foreground/60 mb-1">Today · Mumbai</p>
-                <p className="text-display-xl">29°C</p>
-                <p className="mt-1 text-sm text-muted-foreground">Humid, light rain later</p>
+                <p className="text-label-sm text-foreground/60 mb-1">{weather?.available ? `Today · ${weather.city}` : "Weather context"}</p>
+                <p className="text-display-xl">{weather?.available ? `${Math.round(weather.temperatureC)}°C` : "—"}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{weather?.available ? weather.condition : weatherQuery.isError ? "Weather could not be loaded." : weather?.reason ?? "Loading weather…"}</p>
               </div>
               <CloudSun className="h-12 w-12 text-brand opacity-70" />
             </div>
             <div className="mt-4 flex items-center gap-2 rounded-2xl bg-background/50 px-4 py-2.5 backdrop-blur-sm">
               <Sparkles className="h-3.5 w-3.5 text-brand" />
-              <span className="text-xs font-medium">AI suggests: camel blazer + closed footwear</span>
+              <span className="text-xs font-medium">{weather?.available ? `${weather.stylingTip} Retrieved ${new Date(weather.retrievedAt).toLocaleString()} · Open-Meteo` : "Select a weather city in Style Profile to enable weather context."}</span>
             </div>
           </div>
 
@@ -193,6 +200,7 @@ export default function DashboardPage() {
               </Link>
             ))}
           </div>
+          {!dashboardPending && !dashboardError && displayWardrobeItems.length === 0 && <p className="text-sm text-muted-foreground">No wardrobe items yet. Add your first item to see it here.</p>}
         </motion.div>
 
         {/* ── Row 4: style breakdown + notifications ── */}
@@ -202,15 +210,17 @@ export default function DashboardPage() {
             <p className="text-label-sm mb-1">Style DNA</p>
             <p className="text-display-sm mb-5">Your wardrobe fingerprint</p>
             <div className="space-y-4">
-              {analytics.favoriteColors.map((c) => (
+              {colorCounts.map((c) => (
                 <div key={c.label}>
                   <div className="mb-1.5 flex justify-between text-xs">
                     <span>{c.label}</span>
-                    <span className="text-muted-foreground">{c.value}%</span>
+                    <span className="text-muted-foreground">{c.value} items</span>
                   </div>
-                  <Progress value={c.value} className="h-1.5" indicatorClassName="bg-brand" />
+                  <Progress value={colorTotal ? Math.round(c.value * 100 / colorTotal) : 0} className="h-1.5" indicatorClassName="bg-brand" />
                 </div>
               ))}
+              {insightsQuery.isError && <Button variant="outline" onClick={() => void insightsQuery.refetch()}>Retry style insights</Button>}
+              {!insightsQuery.isPending && !insightsQuery.isError && colorCounts.length === 0 && <p className="text-sm text-muted-foreground">Add wardrobe items to see your colour distribution.</p>}
             </div>
             <Button variant="outline" size="sm" className="mt-5 w-full" asChild>
               <Link href="/insights">Full insights <ArrowRight className="h-3.5 w-3.5" /></Link>
@@ -224,7 +234,7 @@ export default function DashboardPage() {
                 <p className="text-label-sm mb-1">Updates</p>
                 <p className="text-display-sm">Recent alerts</p>
               </div>
-              <Badge variant="destructive">{displayNotifications.filter((n) => !n.read).length}</Badge>
+              <Badge variant="destructive">{stats?.unreadNotifications ?? 0}</Badge>
             </div>
             <div className="space-y-2.5">
               {displayNotifications.slice(0, 4).map((n) => (
@@ -238,6 +248,7 @@ export default function DashboardPage() {
                   <p className="mt-1 text-[10px] text-muted-foreground">{n.time}</p>
                 </div>
               ))}
+              {!dashboardPending && !dashboardError && displayNotifications.length === 0 && <p className="text-sm text-muted-foreground">No recent notifications.</p>}
             </div>
             <Button variant="ghost" size="sm" className="mt-4 w-full" asChild>
               <Link href="/notifications">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
@@ -257,15 +268,17 @@ export default function DashboardPage() {
             </Button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(displayShop.length > 0 ? displayShop : shoppingRecommendations.slice(0, 3)).map((item, i) => (
+            {displayShop.map((item, i) => (
               <AIRecommendationCard
                 key={item.id}
                 item={item}
-                isWishlisted={false}
-                onToggleWishlist={() => {}}
+                detailsHref={shopItems[i]?.available ? `/shopping/${shopItems[i].id}` : undefined}
+                isWishlisted={shopItems[i]?.wishlisted ?? false}
+                onToggleWishlist={() => { const selected = shopItems[i]; if (selected) toggleShopWishlist.mutate(selected); }}
                 index={i}
               />
             ))}
+            {displayShop.length === 0 && <p className="text-sm text-muted-foreground">No shopping recommendations available yet.</p>}
           </div>
         </motion.div>
       </motion.div>

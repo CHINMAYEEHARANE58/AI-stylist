@@ -44,12 +44,12 @@ function dimensionsFromJpeg(buffer: Buffer): { width: number; height: number } {
       offset += 1;
       continue;
     }
-    while (buffer[offset] === 0xff) offset += 1;
+    while (buffer[offset] === 0xff) {offset += 1;}
     const marker = buffer[offset++];
-    if (marker === undefined || marker === 0xd9 || marker === 0xda) break;
+    if (marker === undefined || marker === 0xd9 || marker === 0xda) {break;}
     requireRange(buffer, offset, 2);
     const length = buffer.readUInt16BE(offset);
-    if (length < 2) break;
+    if (length < 2) {break;}
     const isStartOfFrame = marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker);
     if (isStartOfFrame) {
       requireRange(buffer, offset, 7);
@@ -74,12 +74,12 @@ function dimensionsFromWebp(buffer: Buffer): { width: number; height: number } {
     }
     if (chunk === 'VP8 ') {
       requireRange(buffer, data, 10);
-      if (buffer[data + 3] !== 0x9d || buffer[data + 4] !== 0x01 || buffer[data + 5] !== 0x2a) break;
+      if (buffer[data + 3] !== 0x9d || buffer[data + 4] !== 0x01 || buffer[data + 5] !== 0x2a) {break;}
       return { width: buffer.readUInt16LE(data + 6) & 0x3fff, height: buffer.readUInt16LE(data + 8) & 0x3fff };
     }
     if (chunk === 'VP8L') {
       requireRange(buffer, data, 5);
-      if (buffer[data] !== 0x2f) break;
+      if (buffer[data] !== 0x2f) {break;}
       const first = buffer[data + 1];
       const second = buffer[data + 2];
       const third = buffer[data + 3];
@@ -124,7 +124,7 @@ function isCloudinaryConfigured(): boolean {
 let cloudinaryConfigured = false;
 
 async function ensureCloudinary(): Promise<void> {
-  if (cloudinaryConfigured) return;
+  if (cloudinaryConfigured) {return;}
   if (!isCloudinaryConfigured()) {
     throw new AppError('Image storage is not configured. Configure Cloudinary credentials before uploading.', 503, true, 'STORAGE_NOT_CONFIGURED');
   }
@@ -152,9 +152,9 @@ export async function uploadToCloudinary(buffer: Buffer, storageKey: string, met
 }
 
 export async function deleteFromCloudinary(providerId: string): Promise<void> {
-  if (!isCloudinaryConfigured()) return;
+  if (!isCloudinaryConfigured()) {return;}
   try {
-    if (!cloudinaryConfigured) await ensureCloudinary();
+    if (!cloudinaryConfigured) {await ensureCloudinary();}
     const { v2: cloudinary } = await import('cloudinary');
     await cloudinary.uploader.destroy(providerId, { resource_type: 'image', invalidate: true });
   } catch {

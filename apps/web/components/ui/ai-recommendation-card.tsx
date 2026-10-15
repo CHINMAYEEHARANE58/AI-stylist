@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { ArrowUpRight, Bookmark, Star } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ interface AIRecommendationCardProps {
   isWishlisted?: boolean;
   onToggleWishlist?: (id: string) => void;
   index?: number;
+  detailsHref?: string;
 }
 
 export function AIRecommendationCard({
@@ -22,6 +24,7 @@ export function AIRecommendationCard({
   isWishlisted = false,
   onToggleWishlist,
   index = 0,
+  detailsHref,
 }: AIRecommendationCardProps) {
   return (
     <motion.div
@@ -40,12 +43,12 @@ export function AIRecommendationCard({
             height={500}
             className="w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           />
-          {/* Match score pill */}
-          <div className="absolute left-3 top-3">
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/90 px-2.5 py-1 text-[10px] font-semibold text-primary-foreground backdrop-blur-md">
-              {item.similarity}% match
-            </span>
-          </div>
+          {item.isSample ? <div className="absolute left-3 top-3"><Badge variant="warning" size="sm">Sample catalog</Badge></div>
+            : item.similarity !== null && <div className="absolute left-3 top-3">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/90 px-2.5 py-1 text-[10px] font-semibold text-primary-foreground backdrop-blur-md">
+                {item.similarity}% relevance
+              </span>
+            </div>}
           {/* Wishlist button */}
           <button
             type="button"
@@ -65,23 +68,25 @@ export function AIRecommendationCard({
         {/* Info */}
         <div className="flex flex-1 flex-col p-4">
           <div className="flex items-center justify-between gap-2">
-            <Badge variant="muted" size="sm">{item.store}</Badge>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Star className="h-3 w-3 fill-brand text-brand" />
-              {item.rating}
-            </div>
+            <Badge variant={item.available === false ? "warning" : "muted"} size="sm">
+              {item.available === false ? "Unavailable" : item.store ?? "No live offer"}
+            </Badge>
+            {item.rating != null && <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Star className="h-3 w-3 fill-brand text-brand" />{item.rating}
+            </div>}
           </div>
           <p className="mt-3 text-sm font-semibold leading-snug">{item.title}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{item.brand}</p>
+          {detailsHref && <Link href={detailsHref} className="mt-1 w-fit text-xs font-medium text-brand-dark hover:underline">
+            View product details
+          </Link>}
+          {item.reason && <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.reason}</p>}
 
           <div className="mt-auto flex items-center justify-between pt-4">
-            <span className="text-display-sm">{currency(item.price)}</span>
-            <Button size="sm" asChild>
-              <a href={item.url} target="_blank" rel="noreferrer">
-                Buy
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </a>
-            </Button>
+            <span className="text-display-sm">{item.price == null ? "Price unavailable" : currency(item.price, item.currency ?? "INR")}</span>
+            {item.url && item.available !== false && !item.isSample && <Button size="sm" asChild>
+              <a href={item.url} target="_blank" rel="noopener noreferrer">Buy <ArrowUpRight className="h-3.5 w-3.5" /></a>
+            </Button>}
           </div>
         </div>
       </div>

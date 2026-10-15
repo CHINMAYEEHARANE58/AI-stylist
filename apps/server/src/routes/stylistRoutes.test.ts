@@ -63,7 +63,9 @@ describe('private stylist chat API', () => {
     dailyCountOverride = null;
     mocks.providerFactory.mockReturnValue({ name: 'test-ai', model: 'test-model', chat: mocks.providerChat });
     mocks.providerChat.mockResolvedValue(result);
-    mocks.preferencesFindUnique.mockResolvedValue({ preferredAesthetics: ['Minimal'], favoriteColors: ['Ivory'] });
+    mocks.preferencesFindUnique.mockResolvedValue({ preferredAesthetics: ['Minimal'], favoriteColors: ['Ivory'],
+      preferredCategories: ['tops'], preferredOccasions: ['Office'], preferredSeasons: ['Summer'],
+      fitPreferences: ['Relaxed'], styleDislikes: ['Neon'] });
     mocks.clothingFindMany.mockImplementation(async ({ where }: { where: { userId: string; id?: { in: string[] } } }) => {
       if (where.userId !== requestUser) return [];
       const items = dropReferencedItem && where.id ? [ownedTop] : [ownedTop, ownedPants];
@@ -129,7 +131,8 @@ describe('private stylist chat API', () => {
     expect(sent.body.data.outfits[0].items.map((item: { id: string }) => item.id)).toEqual(['owned-top', 'owned-pants']);
     expect(sent.body.data.shoppingSuggestions[0].name).toBe('Loafers');
     expect(mocks.clothingFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: requestUser, archived: false } }));
-    expect(mocks.providerChat.mock.calls[0][2]).toEqual({ preferredAesthetics: ['Minimal'], favoriteColors: ['Ivory'] });
+    expect(mocks.providerChat.mock.calls[0][2]).toMatchObject({ preferredAesthetics: ['Minimal'],
+      favoriteColors: ['Ivory'], preferredCategories: ['tops'], styleDislikes: ['Neon'] });
     expect(storedMessages).toHaveLength(2);
     const usageWrite = mocks.historyCreate.mock.calls[0][0] as { data: { input: unknown; output: unknown } };
     expect(usageWrite.data.input).toEqual({ conversationId });

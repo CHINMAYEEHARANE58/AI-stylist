@@ -400,8 +400,10 @@ export const outfitsApi = {
     season?: string;
     notes?: string;
     anchorItemId?: string;
+    eventId?: string;
+    useWeather?: boolean;
   }) =>
-    apiFetch<ApiSuccessResponse<{ outfits: GeneratedOutfitApi[]; provider?: string; model?: string; minimumItems?: number }>>("/outfits/generate", {
+    apiFetch<ApiSuccessResponse<{ outfits: GeneratedOutfitApi[]; provider?: string; model?: string; minimumItems?: number; weather?: WeatherApi }>>("/outfits/generate", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -490,6 +492,14 @@ export interface UserProfileApi {
     preferredAesthetics: string[];
     favoriteColors: string[];
     stylePreferences: string[];
+    preferredCategories: string[];
+    preferredOccasions: string[];
+    fitPreferences: string[];
+    preferredSeasons: string[];
+    styleDislikes: string[];
+    budgetCurrency?: string | null;
+    budgetMax?: string | null;
+    weatherCity?: string | null;
     appearance?: string;
     notificationPreferences?: Record<string, unknown>;
     privacyPreferences?: Record<string, unknown>;
@@ -529,6 +539,14 @@ export const profileApi = {
     preferredAesthetics?: string[];
     favoriteColors?: string[];
     stylePreferences?: string[];
+    preferredCategories?: string[];
+    preferredOccasions?: string[];
+    fitPreferences?: string[];
+    preferredSeasons?: string[];
+    styleDislikes?: string[];
+    budgetCurrency?: string | null;
+    budgetMax?: number | null;
+    weatherCity?: string | null;
     appearance?: "light" | "dark" | "system";
     notificationPreferences?: Record<string, unknown>;
     privacyPreferences?: Record<string, unknown>;
@@ -537,6 +555,9 @@ export const profileApi = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+
+  resetStylePreferences: () =>
+    apiFetch<ApiSuccessResponse<unknown>>("/profile/preferences", { method: "DELETE" }),
 
   updateSettings: (data: {
     profile?: { firstName?: string; lastName?: string; bio?: string; location?: string; clothingSizes?: Record<string, string> };
@@ -594,7 +615,7 @@ export interface NotificationApi {
 export const insightsApi = {
   dashboard: () =>
     apiFetch<ApiSuccessResponse<{
-      stats: { wardrobeItems: number; savedOutfits: number; unreadNotifications: number };
+      stats: { wardrobeItems: number; savedOutfits: number; unreadNotifications: number; outfitsGenerated: number };
       recentWardrobeItems: ClothingItemApi[];
       recentSavedOutfits: SavedOutfitApi[];
       notifications: NotificationApi[];
@@ -608,6 +629,11 @@ export const insightsApi = {
       aesthetics: Array<{ label: string; value: number }>;
       occasions: Array<{ label: string; value: number }>;
       wardrobeGaps: Array<{ title: string; priority: string; reason: string }>;
+      sampled: boolean;
+      outfitUsageCategories: Array<{ label: string; value: number }>;
+      outfitOccasions: Array<{ label: string | null; value: number }>;
+      recentSavedOutfits: Array<{ id: string; createdAt: string;
+        outfit: { title: string; occasion: string | null } }>;
     }>>("/insights/wardrobe"),
 
   trends: () =>
@@ -622,6 +648,8 @@ export const insightsApi = {
     return apiFetch<ApiPaginatedResponse<NotificationApi>>(`/insights/notifications${q.toString() ? `?${q}` : ""}`);
   },
 
+  unreadCount: () => apiFetch<ApiSuccessResponse<{ unreadCount: number }>>("/insights/notifications/unread-count"),
+
   markRead: (id: string) =>
     apiFetch<ApiSuccessResponse<unknown>>(`/insights/notifications/${id}/read`, { method: "PATCH" }),
 
@@ -630,6 +658,34 @@ export const insightsApi = {
 
   deleteNotification: (id: string) =>
     apiFetch<void>(`/insights/notifications/${id}`, { method: "DELETE" }),
+};
+
+export type WeatherApi = { available: true; city: string; temperatureC: number; feelsLikeC?: number;
+  precipitationMm: number; condition: string; stylingTip: string; retrievedAt: string;
+  forecastFor?: string; source: "Open-Meteo" } | { available: false; reason: string };
+export const weatherApi = {
+  current: (city?: string) => apiFetch<ApiSuccessResponse<WeatherApi>>(
+    `/weather${city ? `?city=${encodeURIComponent(city)}` : ""}`),
+};
+
+export interface CalendarEventApi {
+  id: string; title: string; description: string | null; location: string | null;
+  eventType: string | null; startsAt: string; endsAt: string; timeZone: string;
+  allDay: boolean; outfitId: string | null; createdAt: string; updatedAt: string;
+}
+export interface CalendarEventInput {
+  title: string; description?: string | null; location?: string | null; eventType?: string | null;
+  startsAt: string; endsAt: string; timeZone: string; allDay?: boolean; outfitId?: string | null;
+}
+export const calendarApi = {
+  list: (page = 1) => apiFetch<ApiPaginatedResponse<CalendarEventApi>>(`/calendar?page=${page}`),
+  create: (data: CalendarEventInput) => apiFetch<ApiSuccessResponse<CalendarEventApi>>('/calendar',
+    { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<CalendarEventInput>) => apiFetch<ApiSuccessResponse<CalendarEventApi>>(
+    `/calendar/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => apiFetch<void>(`/calendar/${id}`, { method: 'DELETE' }),
+  suggest: (id: string) => apiFetch<ApiSuccessResponse<{ outfits: GeneratedOutfitApi[];
+    provider?: string; model?: string; weather?: WeatherApi }>>(`/calendar/${id}/suggest`, { method: 'POST' }),
 };
 
 // ── Inspiration / Pinterest ────────────────────────────────────────────
@@ -765,29 +821,70 @@ export interface StylistConversationApi {
 export interface ShoppingItemApi {
   id: string;
   title: string;
-  price: number;
-  originalPrice?: number;
-  rating: number;
-  reviewCount?: number;
-  brand: string;
-  category: string;
-  similarity: number;
-  imageUrl: string;
+  price: number | null;
+  originalPrice: number | null;
+  currency: string | null;
+  brand: string | null;
+  category: string | null;
+  relevance: number | null;
+  reason: string | null;
+  signals: string[];
+  imageUrl: string | null;
+  store: string | null;
+  url: string | null;
+  isSample: boolean;
+  available: boolean;
+  offers: ShoppingOfferApi[];
   wishlisted: boolean;
 }
 
+export interface ShoppingOfferApi {
+  id: string;
+  store: string;
+  url: string;
+  price: number;
+  currency: string;
+  availability: string | null;
+  observedAt: string;
+  freshness: "fresh" | "stale";
+  canBuy: boolean;
+}
+
+export interface ProductDetailApi {
+  id: string;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  attributes: unknown;
+  isSample: boolean;
+  available: boolean;
+  updatedAt: string;
+  offers: ShoppingOfferApi[];
+  canRefresh: boolean;
+}
+
 export const shoppingApi = {
-  list: (params: { search?: string; category?: string; page?: number; perPage?: number } = {}) => {
+  list: (params: { search?: string; category?: string; store?: string; sort?: "relevance" | "newest";
+    page?: number; perPage?: number } = {}) => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => v !== undefined && q.set(k, String(v)));
     return apiFetch<ApiPaginatedResponse<ShoppingItemApi>>(`/shopping${q.toString() ? `?${q}` : ""}`);
   },
 
+  refresh: () => apiFetch<ApiSuccessResponse<{ refreshed: boolean }>>("/shopping/refresh", { method: "POST" }),
+
   compare: (id: string) =>
     apiFetch<ApiSuccessResponse<{
       product: { id: string; title: string; brand: string; imageUrl: string };
-      comparisons: Array<{ store: string; price: number; discount: number; rating: number; availability: string; url: string }>;
+      comparisons: ShoppingItemApi["offers"];
     }>>(`/shopping/compare/${id}`),
+
+  details: (id: string) => apiFetch<ApiSuccessResponse<ProductDetailApi>>(`/shopping/products/${encodeURIComponent(id)}`),
+
+  refreshOffers: (id: string) => apiFetch<ApiSuccessResponse<{ offerCount: number }>>(
+    `/shopping/products/${encodeURIComponent(id)}/refresh`, { method: "POST" }),
 
   addToWishlist: (catalogItemId: string) =>
     apiFetch<ApiSuccessResponse<unknown>>("/shopping/wishlist", {
@@ -801,6 +898,12 @@ export const shoppingApi = {
       body: JSON.stringify({ catalogItemId }),
     }),
 
+  removeWishlistItem: (wishlistItemId: string) =>
+    apiFetch<void>("/shopping/wishlist", {
+      method: "DELETE",
+      body: JSON.stringify({ wishlistItemId }),
+    }),
+
   getWishlist: () =>
-    apiFetch<ApiSuccessResponse<unknown[]>>("/shopping/wishlist"),
+    apiFetch<ApiSuccessResponse<Array<{ id: string; createdAt: string; item: ShoppingItemApi }>>>("/shopping/wishlist"),
 };

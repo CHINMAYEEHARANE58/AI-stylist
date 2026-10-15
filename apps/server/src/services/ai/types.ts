@@ -43,10 +43,16 @@ export interface OutfitGenerationInput {
   season?: string;
   notes?: string;
   anchorItemId?: string;
+  eventId?: string;
   wardrobeItems: WardrobeItemSummary[];
   userProfile?: {
     preferredAesthetics: string[];
     favoriteColors: string[];
+    preferredCategories?: string[];
+    preferredOccasions?: string[];
+    fitPreferences?: string[];
+    preferredSeasons?: string[];
+    styleDislikes?: string[];
   };
 }
 
@@ -158,6 +164,6 @@ export interface AIProvider {
   chat(
     messages: ChatMessage[],
     wardrobeContext: WardrobeItemSummary[],
-    userProfile?: { preferredAesthetics: string[]; favoriteColors: string[] },
+    userProfile?: OutfitGenerationInput['userProfile'],
   ): Promise<StylistChatResult>;
 }

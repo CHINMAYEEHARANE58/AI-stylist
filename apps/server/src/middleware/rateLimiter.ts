@@ -41,3 +41,12 @@ export const outfitGenerationLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Too many outfit generations. Please wait a few minutes and try again.', code: 'OUTFIT_GENERATION_RATE_LIMITED' },
 });
+
+/** Bounds city lookups against the configured weather-provider quota. */
+export const weatherLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many weather requests. Please try again later.', code: 'WEATHER_RATE_LIMITED' },
+});

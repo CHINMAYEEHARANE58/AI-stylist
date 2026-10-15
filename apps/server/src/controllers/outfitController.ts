@@ -8,6 +8,7 @@ import { getAIProvider } from '../services/ai/index';
 import type { WardrobeItemSummary } from '../services/ai/types';
 import { keepEligibleOutfits } from '../services/ai/outfitGeneration';
 import { keepEligibleStyleLooks, styleItemResultSchema } from '../services/ai/styleItemGeneration';
+import { getWeatherStylingContext } from '../services/weatherService';
 
 function param(req: Request, key: string): string {
   const v = req.params[key];
@@ -26,6 +27,8 @@ const generateSchema = z.object({
   season:       z.string().trim().min(1).max(40).optional(),
   notes:        z.string().trim().min(1).max(500).optional(),
   anchorItemId: z.string().trim().min(1).max(120).optional(),
+  eventId: z.string().cuid().optional(),
+  useWeather: z.boolean().optional(),
 }).strict();
 
 const saveOutfitSchema = z.object({
@@ -110,6 +113,12 @@ function matchesGenerationFilters(item: WardrobeItemSummary, input: z.infer<type
 export async function generateOutfitRecommendations(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
   const input  = generateSchema.parse(req.body);
+  const event = input.eventId ? await prisma.calendarEvent.findFirst({
+    where: { id: input.eventId, userId }, select: { id: true, title: true, description: true,
+      eventType: true, startsAt: true, timeZone: true },
+  }) : null;
+  if (input.eventId && !event) {throw new AppError('Event not found.', 404);}
+  if (event && event.startsAt < new Date()) {throw new AppError('Choose an upcoming event for outfit suggestions.', 422);}
   const wardrobe = await getUserWardrobeForAI(userId);
 
   if (wardrobe.length < 2) {
@@ -123,7 +132,17 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
     if (!anchorItem) {throw new AppError('Anchor item not found in your wardrobe.', 404);}
   }
 
-  const eligibleWardrobe = wardrobe.filter((item) => matchesGenerationFilters(item, input));
+  const userPrefs = await prisma.userPreference.findUnique({
+    where: { userId },
+    select: { preferredAesthetics: true, favoriteColors: true, preferredCategories: true,
+      preferredOccasions: true, fitPreferences: true, preferredSeasons: true, styleDislikes: true,
+      weatherCity: true },
+  });
+  const effectiveInput = { ...input, occasion: input.occasion ?? event?.eventType ?? undefined,
+    notes: input.notes ?? (event ? `${event.title}. ${event.description ?? ''}`.trim().slice(0, 500) : undefined) };
+  const eligibleWardrobe = wardrobe.filter((item) => matchesGenerationFilters(item, effectiveInput)
+    && !(userPrefs?.styleDislikes ?? []).some((dislike) => [item.name, item.category, ...item.colors,
+      ...item.aesthetics].some((value) => value.toLowerCase().includes(dislike.toLowerCase()))));
   if (eligibleWardrobe.length < 2) {
     ApiResponse.success(res, { outfits: [], minimumItems: 2 }, 'Not enough wardrobe items match those filters. Adjust a filter or add more items.');
     return;
@@ -132,17 +151,21 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
     throw new AppError('The selected anchor item does not match the current filters.', 422);
   }
 
-  const userPrefs = await prisma.userPreference.findUnique({
-    where: { userId },
-    select: { preferredAesthetics: true, favoriteColors: true },
-  });
+  const weather = (input.useWeather || event) ? await getWeatherStylingContext(userPrefs?.weatherCity,
+    event?.startsAt, event?.timeZone) : { available: false as const, reason: 'Weather was not requested.' };
 
   const ai = getAIProvider();
   const result = await ai.generateOutfits({
-    ...input,
+    ...effectiveInput,
+    weather: weather.available
+      ? `${weather.temperatureC}°C, ${weather.condition}, ${weather.precipitationMm}mm precipitation; ${weather.stylingTip}`
+      : input.weather,
     wardrobeItems: eligibleWardrobe,
     userProfile: userPrefs
-      ? { preferredAesthetics: userPrefs.preferredAesthetics, favoriteColors: userPrefs.favoriteColors }
+      ? { preferredAesthetics: userPrefs.preferredAesthetics, favoriteColors: userPrefs.favoriteColors,
+        preferredCategories: userPrefs.preferredCategories, preferredOccasions: userPrefs.preferredOccasions,
+        fitPreferences: userPrefs.fitPreferences, preferredSeasons: userPrefs.preferredSeasons,
+        styleDislikes: userPrefs.styleDislikes }
       : undefined,
   });
 
@@ -176,11 +199,11 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
   });
 
   if (outfitsWithItems.length === 0) {
-    ApiResponse.success(res, { outfits: [], provider: result.provider, model: result.model }, 'No complete outfit could be created from your available items. Try regenerating or change the filters.');
+    ApiResponse.success(res, { outfits: [], provider: result.provider, model: result.model, weather }, 'No complete outfit could be created from your available items. Try regenerating or change the filters.');
     return;
   }
 
-  ApiResponse.success(res, { outfits: outfitsWithItems, provider: result.provider, model: result.model }, 'Outfits generated. Review one and save it if you want to keep it.');
+  ApiResponse.success(res, { outfits: outfitsWithItems, provider: result.provider, model: result.model, weather }, 'Outfits generated. Review one and save it if you want to keep it.');
 }
 
 export async function styleSingleItem(req: Request, res: Response): Promise<void> {

@@ -42,7 +42,7 @@ ClosetAI is a modern AI-powered fashion styling platform that helps users digiti
 - Digital wardrobe interface with search, favorites, upload/scan prompts, and item styling actions
 - AI outfit generator with occasion, weather, anchor-item, and chat stylist interactions
 - Pinterest-inspired outfit recreation studio with similarity matching and missing-piece suggestions
-- AI shopping assistant with wardrobe gap notes and cross-store price comparison
+- Wardrobe-aware shopping recommendations, persistent wishlist, product details, and currency-safe comparison of authorized offer observations
 - Personalized AI style profile with insights and visual analytics
 - Weather-based styling endpoint placeholder
 - Persistent saved outfits and user-named lookbooks, plus onboarding tutorial, notifications, and mobile bottom navigation
@@ -190,8 +190,12 @@ Only uploaded JPEG, PNG, and WebP images are accepted. Pinterest URL/board impor
 
 Shopping:
 
-- `GET /api/shopping/recommendations`
-- `GET /api/shopping/compare?product=Neutral%20Leather%20Sneakers`
+- `GET /api/v1/shopping` — authenticated, paginated recommendations with search, category, store, and sort filters.
+- `POST /api/v1/shopping/refresh` — recompute relevance from the user's wardrobe, saved inspiration gaps, preferences, and recently styled occasions.
+- `GET /api/v1/shopping/compare/:id` — verified offers for one catalog product, if an authorized feed is configured.
+- `GET/POST/DELETE /api/v1/shopping/wishlist` — persistent private wishlist.
+
+The development seed creates six clearly labeled example products with **no invented prices, merchants, stock claims, or buy links**. Live commerce data requires an authorized provider feed; see [backend setup](docs/backend-foundation.md).
 
 Insights:
 

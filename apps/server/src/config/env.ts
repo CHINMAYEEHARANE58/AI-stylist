@@ -40,7 +40,17 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
 
   // Weather
+  WEATHER_PROVIDER: z.enum(['none', 'open-meteo']).default('none'),
   WEATHER_API_KEY: z.string().optional(),
+  WEATHER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(20000).default(6000),
+
+  // Authorized shopping catalog offer feed. Disabled without explicit setup.
+  SHOPPING_PROVIDER: z.enum(['none', 'authorized-json']).default('none'),
+  SHOPPING_FEED_URL: z.string().url().optional(),
+  SHOPPING_FEED_TOKEN: z.string().min(1).optional(),
+  SHOPPING_ALLOWED_MERCHANT_HOSTS: z.string().default(''),
+  SHOPPING_OFFER_MAX_AGE_MINUTES: z.coerce.number().int().min(5).max(10080).default(1440),
+  SHOPPING_FEED_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(8000),
 
   // Google OAuth
   GOOGLE_CLIENT_ID: z.string().optional(),

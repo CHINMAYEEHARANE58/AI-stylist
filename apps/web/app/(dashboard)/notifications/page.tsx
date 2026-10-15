@@ -8,8 +8,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FilterChips } from "@/components/ui/filter-chips";
-import { insightsApi, type NotificationApi } from "@/lib/api-client";
-import { notifications as mockNotifications } from "@/lib/mock-data";
+import { insightsApi } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 const TYPE_ICONS = {
@@ -33,34 +32,35 @@ const FILTERS = ["Outfits", "Weather", "Sales", "Trends"];
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["notifications"],
-    queryFn: () => insightsApi.notifications(),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["notifications", page],
+    queryFn: () => insightsApi.notifications({ page }),
     staleTime: 15_000,
   });
+  const unreadQuery = useQuery({ queryKey: ["notifications-unread"], queryFn: () => insightsApi.unreadCount() });
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    void queryClient.invalidateQueries({ queryKey: ["notifications-unread"] });
+    void queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }); };
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => insightsApi.markRead(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications", "dashboard-summary"] }),
+    onSuccess: refresh,
   });
 
   const markAllMutation = useMutation({
     mutationFn: () => insightsApi.markAllRead(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications", "dashboard-summary"] }),
+    onSuccess: refresh,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => insightsApi.deleteNotification(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: refresh,
   });
 
-  // Use live data or fall back to mock
-  const rawItems: NotificationApi[] = data?.data?.length
-    ? data.data
-    : mockNotifications.map((n) => ({ ...n, title: n.message.slice(0, 40), createdAt: new Date().toISOString() }));
-
-  const unreadCount = rawItems.filter((n) => !n.read).length;
+  const rawItems = data?.data ?? [];
+  const unreadCount = unreadQuery.data?.data.unreadCount ?? 0;
 
   const filterMap: Record<string, string> = {
     Outfits: "outfit", Weather: "weather", Sales: "sale", Trends: "trend",
@@ -78,7 +78,7 @@ export default function NotificationsPage() {
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <p className="text-sm text-muted-foreground">{filtered.length} notifications</p>
+          <p className="text-sm text-muted-foreground">{data?.meta.total ?? 0} notifications</p>
           {unreadCount > 0 && <Badge variant="destructive">{unreadCount} unread</Badge>}
         </div>
         {unreadCount > 0 && (
@@ -95,6 +95,9 @@ export default function NotificationsPage() {
       />
 
       <div className="space-y-2">
+        {isLoading && <p role="status" className="text-sm text-muted-foreground">Loading notifications…</p>}
+        {isError && <div role="alert" className="rounded-2xl border border-destructive/20 p-4 text-sm text-destructive">{error.message}<Button variant="outline" size="sm" onClick={() => void refetch()} className="ml-3">Retry</Button></div>}
+        {(markReadMutation.error || markAllMutation.error || deleteMutation.error) && <p role="alert" className="text-sm text-destructive">Could not update notifications. Please retry.</p>}
         <AnimatePresence initial={false}>
           {filtered.map((n) => (
             <motion.div
@@ -150,13 +153,14 @@ export default function NotificationsPage() {
           ))}
         </AnimatePresence>
 
-        {filtered.length === 0 && (
+        {!isLoading && !isError && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border py-16 text-center">
             <Bell className="h-8 w-8 text-muted-foreground" />
             <p className="text-display-sm">All clear</p>
             <p className="text-sm text-muted-foreground">No notifications match your current filter.</p>
           </div>
         )}
+        {(data?.meta.totalPages ?? 0) > 1 && <div className="flex justify-center gap-3 pt-3"><Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button><span className="self-center text-xs text-muted-foreground">Page {page} of {data?.meta.totalPages}</span><Button variant="outline" size="sm" disabled={page >= (data?.meta.totalPages ?? 1)} onClick={() => setPage(page + 1)}>Next</Button></div>}
       </div>
     </DashboardShell>
   );

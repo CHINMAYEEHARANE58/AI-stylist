@@ -8,6 +8,7 @@ import { AppError } from '../utils/AppError';
 import { uploadImage, deleteFromCloudinary } from '../services/imageService';
 import { clearAuthCookies } from '../services/sessionService';
 import { requestEmailChange, verifyEmailChange } from '../services/emailChangeService';
+import { resetStylePreferenceData, stylePreferencePatchSchema } from '../services/stylePreferences';
 
 // ── Schemas ────────────────────────────────────────────────────────────
 
@@ -30,19 +31,9 @@ const updateProfileSchema = z.object({
   clothingSizes: jsonRecord.optional(),
 }).strict();
 
-const updatePreferencesSchema = z.object({
-  preferredAesthetics: z.array(z.string().max(60)).max(12).optional(),
-  favoriteColors:      z.array(z.string().max(60)).max(12).optional(),
-  stylePreferences:    z.array(z.string().max(60)).max(12).optional(),
-  notificationPreferences: z.record(z.unknown()).optional(),
-  privacyPreferences:      z.record(z.unknown()).optional(),
-  aiPreferences:           z.record(z.unknown()).optional(),
-  appearance: z.enum(['light', 'dark', 'system']).optional(),
-}).strict();
-
 const updateSettingsSchema = z.object({
   profile:     updateProfileSchema.optional(),
-  preferences: updatePreferencesSchema.optional(),
+  preferences: stylePreferencePatchSchema.optional(),
 }).strict();
 
 // ── Controllers ────────────────────────────────────────────────────────
@@ -62,7 +53,7 @@ export async function getProfile(req: Request, res: Response): Promise<void> {
   const [wardrobeCount, savedOutfitCount, outfitCount] = await Promise.all([
     prisma.clothingItem.count({ where: { userId, archived: false } }),
     prisma.savedOutfit.count({ where: { userId } }),
-    prisma.outfit.count({ where: { userId } }),
+    prisma.aIStylingHistory.count({ where: { userId, requestType: 'outfit_generation' } }),
   ]);
 
   ApiResponse.success(res, {
@@ -132,7 +123,7 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
 
 export async function updatePreferences(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
-  const data   = updatePreferencesSchema.parse(req.body);
+  const data   = stylePreferencePatchSchema.parse(req.body);
 
   // Cast JSON fields to Prisma-compatible InputJsonValue
   const jsonSafe = {
@@ -143,9 +134,6 @@ export async function updatePreferences(req: Request, res: Response): Promise<vo
     privacyPreferences: data.privacyPreferences !== undefined
       ? (data.privacyPreferences as Prisma.InputJsonValue)
       : undefined,
-    aiPreferences: data.aiPreferences !== undefined
-      ? (data.aiPreferences as Prisma.InputJsonValue)
-      : undefined,
   };
 
   const prefs = await prisma.userPreference.upsert({
@@ -155,6 +143,16 @@ export async function updatePreferences(req: Request, res: Response): Promise<vo
   });
 
   ApiResponse.success(res, prefs, 'Preferences updated.');
+}
+
+export async function resetStylePreferences(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.id;
+  const prefs = await prisma.userPreference.upsert({
+    where: { userId },
+    create: { userId, ...resetStylePreferenceData },
+    update: resetStylePreferenceData,
+  });
+  ApiResponse.success(res, prefs, 'Style preferences reset.');
 }
 
 export async function updateSettings(req: Request, res: Response): Promise<void> {
@@ -179,9 +177,6 @@ export async function updateSettings(req: Request, res: Response): Promise<void>
         : undefined,
       privacyPreferences: prefsData.privacyPreferences !== undefined
         ? (prefsData.privacyPreferences as Prisma.InputJsonValue)
-        : undefined,
-      aiPreferences: prefsData.aiPreferences !== undefined
-        ? (prefsData.aiPreferences as Prisma.InputJsonValue)
         : undefined,
     };
 

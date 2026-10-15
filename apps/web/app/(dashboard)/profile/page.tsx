@@ -1,7 +1,8 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Edit3, Palette, Sparkles, Star, Trophy } from "lucide-react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,18 +13,21 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
-import { ApiError, authApi, profileApi, type UserProfileApi } from "@/lib/api-client";
-import { profileAesthetics } from "@/lib/mock-data";
+import { ApiError, authApi, insightsApi, profileApi, type UserProfileApi } from "@/lib/api-client";
+import { occasions, profileAesthetics } from "@/lib/mock-data";
 import { useAppStore } from "@/store/app-store";
 
-const ACHIEVEMENTS = [
-  { title: "First Upload", desc: "Added your first wardrobe item", done: true },
-  { title: "Style Explorer", desc: "Generated 10 AI outfits", done: true },
-  { title: "Pinterest Pro", desc: "Matched 5 Pinterest inspirations", done: false },
-  { title: "Wardrobe Analyst", desc: "Reviewed your full insights report", done: true },
-  { title: "Shopping Savvy", desc: "Compared prices across 3 retailers", done: false },
-  { title: "Outfit Curator", desc: "Saved 10 outfits to your collection", done: false },
-];
+const COLORS = ["Black", "White", "Ivory", "Beige", "Camel", "Brown", "Blue", "Green", "Red", "Pink", "Grey"];
+const CATEGORIES = ["tops", "bottoms", "dresses", "outerwear", "shoes", "accessories"];
+const FITS = ["Regular", "Relaxed", "Tailored", "Oversized", "Slim", "Fitted"];
+const SEASONS = ["Spring", "Summer", "Autumn", "Winter", "All season"];
+type StyleDraft = { favoriteColors: string[]; preferredCategories: string[]; preferredOccasions: string[];
+  fitPreferences: string[]; preferredSeasons: string[]; styleDislikes: string; stylePreferences: string;
+  budgetCurrency: string; budgetMax: string; weatherCity: string };
+const emptyDraft: StyleDraft = { favoriteColors: [], preferredCategories: [], preferredOccasions: [],
+  fitPreferences: [], preferredSeasons: [], styleDislikes: "", stylePreferences: "",
+  budgetCurrency: "", budgetMax: "", weatherCity: "" };
+const splitTags = (value: string) => value.split(",").map((tag) => tag.trim()).filter(Boolean);
 
 const displayName = (profile: UserProfileApi["profile"] | undefined, fallback = "Your profile") =>
   [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") || fallback;
@@ -40,13 +44,22 @@ export default function ProfilePage() {
   const [name, setName] = useState(user?.name ?? "");
   const [sizes, setSizes] = useState("");
   const [aesthetics, setAesthetics] = useState<string[]>([]);
+  const [styleDraft, setStyleDraft] = useState<StyleDraft>(emptyDraft);
+  const insights = useQuery({ queryKey: ["profile-style-insights"], queryFn: () => insightsApi.wardrobe() });
 
-  const applyProfile = (next: UserProfileApi) => {
+  const applyProfile = useCallback((next: UserProfileApi) => {
     setData(next);
     setName(displayName(next.profile, user?.name ?? ""));
     setSizes(next.profile?.clothingSizes?.general ?? "");
     setAesthetics(next.preferences?.preferredAesthetics ?? []);
-  };
+    const prefs = next.preferences;
+    setStyleDraft({ favoriteColors: prefs?.favoriteColors ?? [], preferredCategories: prefs?.preferredCategories ?? [],
+      preferredOccasions: prefs?.preferredOccasions ?? [], fitPreferences: prefs?.fitPreferences ?? [],
+      preferredSeasons: prefs?.preferredSeasons ?? [], styleDislikes: (prefs?.styleDislikes ?? []).join(", "),
+      stylePreferences: (prefs?.stylePreferences ?? []).join(", "),
+      budgetCurrency: prefs?.budgetCurrency ?? "", budgetMax: prefs?.budgetMax ?? "",
+      weatherCity: prefs?.weatherCity ?? "" });
+  }, [user?.name]);
   const refresh = async () => applyProfile((await profileApi.get()).data);
   const syncUser = async () => setUser((await authApi.me()).data.user);
 
@@ -54,7 +67,7 @@ export default function ProfilePage() {
     let mounted = true;
     profileApi.get().then((response) => mounted && applyProfile(response.data)).catch((error) => mounted && toast(messageFor(error), "error")).finally(() => mounted && setLoading(false));
     return () => { mounted = false; };
-  }, [toast, user?.name]);
+  }, [applyProfile, toast]);
 
   const save = async () => {
     const normalizedName = name.trim();
@@ -62,14 +75,30 @@ export default function ProfilePage() {
     const [firstName, ...lastName] = normalizedName.split(/\s+/);
     setSaving(true);
     try {
+      if (Boolean(styleDraft.budgetCurrency.trim()) !== Boolean(styleDraft.budgetMax.trim())) {
+        throw new Error("Enter both a budget amount and currency, or leave both blank.");
+      }
       await Promise.all([
         profileApi.updateProfile({ firstName, lastName: lastName.join(" "), clothingSizes: sizes.trim() ? { general: sizes.trim() } : {} }),
-        profileApi.updatePreferences({ preferredAesthetics: aesthetics }),
+        profileApi.updatePreferences({ preferredAesthetics: aesthetics, favoriteColors: styleDraft.favoriteColors,
+          preferredCategories: styleDraft.preferredCategories, preferredOccasions: styleDraft.preferredOccasions,
+          fitPreferences: styleDraft.fitPreferences, preferredSeasons: styleDraft.preferredSeasons,
+          styleDislikes: splitTags(styleDraft.styleDislikes), stylePreferences: splitTags(styleDraft.stylePreferences),
+          budgetCurrency: styleDraft.budgetCurrency.trim().toUpperCase() || null,
+          budgetMax: styleDraft.budgetMax.trim() ? Number(styleDraft.budgetMax) : null,
+          weatherCity: styleDraft.weatherCity.trim() || null }),
       ]);
       await Promise.all([refresh(), syncUser()]);
       setEditing(false);
       toast("Your style profile has been saved.", "success");
-    } catch (error) { toast(messageFor(error), "error"); } finally { setSaving(false); }
+    } catch (error) { toast(error instanceof Error ? error.message : messageFor(error), "error"); } finally { setSaving(false); }
+  };
+  const resetPreferences = async () => {
+    if (!window.confirm("Reset your saved style preferences? Account settings will stay unchanged.")) return;
+    setSaving(true);
+    try { await profileApi.resetStylePreferences(); await refresh(); toast("Style preferences reset.", "success"); }
+    catch (error) { toast(messageFor(error), "error"); }
+    finally { setSaving(false); }
   };
   const uploadAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
     const imageFile = event.target.files?.[0];
@@ -86,17 +115,32 @@ export default function ProfilePage() {
   const initials = displayName(data?.profile, user?.name ?? "U").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const colors = data?.preferences?.favoriteColors ?? [];
   const stats = data?.stats ?? { wardrobeItems: 0, outfitsGenerated: 0, savedOutfits: 0 };
+  const wardrobeColors = insights.data?.data.colors ?? [];
+  const colorTotal = wardrobeColors.reduce((sum, color) => sum + color.value, 0);
+  const achievements = [
+    { title: "First Upload", desc: "Added your first wardrobe item", done: stats.wardrobeItems >= 1 },
+    { title: "Style Explorer", desc: "Ran the outfit generator 10 times", done: stats.outfitsGenerated >= 10 },
+    { title: "Outfit Curator", desc: "Saved 10 outfits to your collection", done: stats.savedOutfits >= 10 },
+  ];
 
   return <DashboardShell heading="Style Profile" subheading="Your personal style fingerprint — the more you add, the smarter ClosetAI gets.">
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-6">
       <div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex flex-col gap-5 sm:flex-row sm:items-start">
         <div className="relative shrink-0"><Avatar size="xl">{data?.profile?.imageUrl && <AvatarImage src={data.profile.imageUrl} alt="Profile photo" />}<AvatarFallback className="text-2xl font-display">{initials}</AvatarFallback></Avatar><input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={uploadAvatar} /><button type="button" disabled={saving} onClick={() => fileInput.current?.click()} className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60" aria-label="Edit avatar"><Edit3 className="h-3.5 w-3.5" /></button></div>
-        <div className="flex-1 min-w-0"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-display-md">{loading ? "Loading…" : displayName(data?.profile, user?.name ?? "Your profile")}</h2><p className="text-sm text-muted-foreground mt-0.5">{data?.email ?? user?.email}</p><div className="mt-2 flex flex-wrap gap-1.5">{aesthetics.map((item) => <Badge key={item} variant="accent" size="sm">{item}</Badge>)}</div></div><Button variant={editing ? "default" : "outline"} size="sm" className="gap-2" onClick={() => editing ? save() : setEditing(true)} disabled={saving || loading}><Edit3 className="h-3.5 w-3.5" />{saving ? "Saving…" : editing ? "Save profile" : "Edit profile"}</Button></div><div className="mt-4 grid grid-cols-3 gap-3">{[[stats.wardrobeItems, "Items"], [stats.outfitsGenerated, "Outfits"], [stats.savedOutfits, "Saved looks"]].map(([value, label]) => <div key={String(label)} className="rounded-2xl bg-muted/60 p-3 text-center"><p className="text-display-sm">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>)}</div></div>
+        <div className="flex-1 min-w-0"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-display-md">{loading ? "Loading…" : displayName(data?.profile, user?.name ?? "Your profile")}</h2><p className="text-sm text-muted-foreground mt-0.5">{data?.email ?? user?.email}</p><div className="mt-2 flex flex-wrap gap-1.5">{aesthetics.map((item) => <Badge key={item} variant="accent" size="sm">{item}</Badge>)}</div></div><Button variant={editing ? "default" : "outline"} size="sm" className="gap-2" onClick={() => editing ? save() : setEditing(true)} disabled={saving || loading}><Edit3 className="h-3.5 w-3.5" />{saving ? "Saving…" : editing ? "Save profile" : "Edit profile"}</Button></div><div className="mt-4 grid grid-cols-3 gap-3">{[[stats.wardrobeItems, "Items"], [stats.outfitsGenerated, "Generation runs"], [stats.savedOutfits, "Saved looks"]].map(([value, label]) => <div key={String(label)} className="rounded-2xl bg-muted/60 p-3 text-center"><p className="text-display-sm">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>)}</div></div>
       </div></div>
       <Tabs defaultValue="dna"><TabsList className="w-full sm:w-auto"><TabsTrigger value="dna">Style DNA</TabsTrigger><TabsTrigger value="preferences">Preferences</TabsTrigger><TabsTrigger value="achievements">Achievements</TabsTrigger></TabsList>
-        <TabsContent value="dna" className="space-y-5"><div className="grid gap-5 lg:grid-cols-2"><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex items-center gap-2 mb-5"><Palette className="h-4 w-4 text-brand" /><p className="text-label-sm">Colour signature</p></div><div className="space-y-4">{colors.length ? colors.map((color) => <div key={color}><div className="mb-1.5 flex justify-between text-sm"><span>{color}</span><span className="text-muted-foreground">{Math.round(100 / colors.length)}%</span></div><Progress value={Math.round(100 / colors.length)} className="h-2" indicatorClassName="bg-brand" /></div>) : <p className="text-sm text-muted-foreground">Add favourite colours in Settings to build your signature.</p>}</div></div><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex items-center gap-2 mb-5"><Sparkles className="h-4 w-4 text-brand" /><p className="text-label-sm">Fashion fingerprint</p></div><div className="grid gap-3">{[["Aesthetics", aesthetics.join(", ") || "Not set"], ["Colours", colors.join(", ") || "Not set"], ["Style preferences", data?.preferences?.stylePreferences.join(", ") || "Not set"], ["Sizes", sizes || "Not set"]].map(([label, value]) => <div key={label} className="rounded-2xl bg-muted/60 p-4"><p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p><p className="text-sm">{value}</p></div>)}</div></div></div></TabsContent>
-        <TabsContent value="preferences" className="space-y-5"><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card space-y-5"><p className="text-label-sm">Personal details</p><div className="grid gap-4 sm:grid-cols-2"><Input label="Full name" value={name} onChange={(event) => setName(event.target.value)} disabled={!editing || saving} /><Input label="Email" value={data?.email ?? user?.email ?? ""} disabled /><Input label="Sizes" value={sizes} onChange={(event) => setSizes(event.target.value)} disabled={!editing || saving} /><Input label="Profile photo" value={data?.profile?.imageUrl ? "Photo uploaded" : "No photo uploaded"} disabled /></div><div><p className="text-label-xs mb-3">Style aesthetics</p><FilterChips options={profileAesthetics} selected={aesthetics} onChange={editing ? setAesthetics : () => {}} /></div>{editing && <Button className="w-full" onClick={save} disabled={saving}><CheckCircle2 className="h-4 w-4" />{saving ? "Saving…" : "Save preferences"}</Button>}</div></TabsContent>
-        <TabsContent value="achievements" className="space-y-4"><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex items-center gap-2 mb-5"><Trophy className="h-4 w-4 text-brand" /><p className="text-label-sm">Achievements</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{ACHIEVEMENTS.map((achievement) => <motion.div key={achievement.title} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className={`rounded-2xl p-4 transition-colors ${achievement.done ? "bg-success/8 border border-success/20" : "bg-muted/60"}`}><div className="flex items-start gap-3"><div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl ${achievement.done ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"}`}>{achievement.done ? <Star className="h-4 w-4 fill-current" /> : <Star className="h-4 w-4" />}</div><div><p className={`text-sm font-semibold ${achievement.done ? "text-foreground" : "text-muted-foreground"}`}>{achievement.title}</p><p className="text-xs leading-5 text-muted-foreground mt-0.5">{achievement.desc}</p>{achievement.done && <Badge variant="success" size="sm" className="mt-2">Earned</Badge>}</div></div></motion.div>)}</div></div></TabsContent>
+        <TabsContent value="dna" className="space-y-5"><div className="grid gap-5 lg:grid-cols-2"><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex items-center gap-2 mb-5"><Palette className="h-4 w-4 text-brand" /><p className="text-label-sm">Wardrobe colour distribution</p></div><div className="space-y-4">{insights.isLoading ? <p className="text-sm text-muted-foreground">Loading wardrobe colours…</p> : insights.isError ? <Button variant="outline" onClick={() => void insights.refetch()}>Retry insights</Button> : wardrobeColors.length ? wardrobeColors.map((color) => <div key={color.label}><div className="mb-1.5 flex justify-between text-sm"><span>{color.label}</span><span className="text-muted-foreground">{color.value} items</span></div><Progress value={colorTotal ? Math.round(100 * color.value / colorTotal) : 0} className="h-2" indicatorClassName="bg-brand" /></div>) : <p className="text-sm text-muted-foreground">Add wardrobe items to see a colour breakdown.</p>}</div></div><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex items-center gap-2 mb-5"><Sparkles className="h-4 w-4 text-brand" /><p className="text-label-sm">Fashion fingerprint</p></div><div className="grid gap-3">{[["Aesthetics", aesthetics.join(", ") || "Not set"], ["Favourite colours", colors.join(", ") || "Not set"], ["Style preferences", data?.preferences?.stylePreferences.join(", ") || "Not set"], ["Preferred occasions", data?.preferences?.preferredOccasions.join(", ") || "Not set"], ["Sizes", sizes || "Not set"]].map(([label, value]) => <div key={label} className="rounded-2xl bg-muted/60 p-4"><p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p><p className="text-sm">{value}</p></div>)}</div></div></div></TabsContent>
+        <TabsContent value="preferences" className="space-y-5"><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card space-y-5">
+          <p className="text-label-sm">Personal details</p>
+          <div className="grid gap-4 sm:grid-cols-2"><Input label="Full name" value={name} onChange={(event) => setName(event.target.value)} disabled={!editing || saving} /><Input label="Email" value={data?.email ?? user?.email ?? ""} disabled /><Input label="Sizes" value={sizes} onChange={(event) => setSizes(event.target.value)} disabled={!editing || saving} /><Input label="Profile photo" value={data?.profile?.imageUrl ? "Photo uploaded" : "No photo uploaded"} disabled /></div>
+          <div><p className="text-label-xs mb-3">Style aesthetics</p><FilterChips options={profileAesthetics} selected={aesthetics} onChange={editing ? setAesthetics : () => {}} /></div>
+          {([["Favourite colours", "favoriteColors", COLORS], ["Clothing categories", "preferredCategories", CATEGORIES], ["Preferred occasions", "preferredOccasions", occasions], ["Fit preferences", "fitPreferences", FITS], ["Preferred seasons", "preferredSeasons", SEASONS]] as const).map(([label, key, options]) => <div key={key}><p className="text-label-xs mb-3">{label}</p><FilterChips options={options} selected={styleDraft[key]} onChange={editing ? (value) => setStyleDraft((draft) => ({ ...draft, [key]: value })) : () => {}} /></div>)}
+          <div className="grid gap-4 sm:grid-cols-2"><Input label="Other style tags (comma separated)" value={styleDraft.stylePreferences} onChange={(event) => setStyleDraft((draft) => ({ ...draft, stylePreferences: event.target.value }))} disabled={!editing || saving} /><Input label="Style dislikes (comma separated)" value={styleDraft.styleDislikes} onChange={(event) => setStyleDraft((draft) => ({ ...draft, styleDislikes: event.target.value }))} disabled={!editing || saving} /><Input label="Maximum shopping budget" type="number" min="0" value={styleDraft.budgetMax} onChange={(event) => setStyleDraft((draft) => ({ ...draft, budgetMax: event.target.value }))} disabled={!editing || saving} /><Input label="Currency (for example USD)" value={styleDraft.budgetCurrency} onChange={(event) => setStyleDraft((draft) => ({ ...draft, budgetCurrency: event.target.value }))} disabled={!editing || saving} /><Input label="Weather city (optional)" value={styleDraft.weatherCity} onChange={(event) => setStyleDraft((draft) => ({ ...draft, weatherCity: event.target.value }))} disabled={!editing || saving} /></div>
+          <p className="text-xs text-muted-foreground">Saved preferences guide AI styling and shopping. Explicit outfit filters take priority; use “Refresh picks” on Shopping after edits. Weather uses only this selected city.</p>
+          {editing && <div className="flex flex-wrap gap-3"><Button onClick={save} disabled={saving}><CheckCircle2 className="h-4 w-4" />{saving ? "Saving…" : "Save preferences"}</Button><Button variant="outline" onClick={resetPreferences} disabled={saving}>Reset style preferences</Button></div>}
+        </div></TabsContent>
+        <TabsContent value="achievements" className="space-y-4"><div className="rounded-3xl border border-border/60 bg-card p-6 shadow-card"><div className="flex items-center gap-2 mb-5"><Trophy className="h-4 w-4 text-brand" /><p className="text-label-sm">Achievements</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{achievements.map((achievement) => <motion.div key={achievement.title} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className={`rounded-2xl p-4 transition-colors ${achievement.done ? "bg-success/8 border border-success/20" : "bg-muted/60"}`}><div className="flex items-start gap-3"><div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl ${achievement.done ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"}`}>{achievement.done ? <Star className="h-4 w-4 fill-current" /> : <Star className="h-4 w-4" />}</div><div><p className={`text-sm font-semibold ${achievement.done ? "text-foreground" : "text-muted-foreground"}`}>{achievement.title}</p><p className="text-xs leading-5 text-muted-foreground mt-0.5">{achievement.desc}</p>{achievement.done && <Badge variant="success" size="sm" className="mt-2">Earned</Badge>}</div></div></motion.div>)}</div></div></TabsContent>
       </Tabs>
     </motion.div>
   </DashboardShell>;

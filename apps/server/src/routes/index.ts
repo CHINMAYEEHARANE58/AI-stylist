@@ -8,6 +8,8 @@ import profileRoutes   from './profileRoutes';
 import shoppingRoutes  from './shoppingRoutes';
 import stylistRoutes   from './stylistRoutes';
 import wardrobeRoutes  from './wardrobeRoutes';
+import calendarRoutes from './calendarRoutes';
+import weatherRoutes from './weatherRoutes';
 import { checkDatabaseConnection } from '../config/db';
 
 const router = Router();
@@ -35,6 +37,8 @@ router.use('/inspiration', pinterestRoutes);
 router.use('/shopping',   shoppingRoutes);
 router.use('/insights',   insightsRoutes);
 router.use('/profile',    profileRoutes);
+router.use('/calendar',   calendarRoutes);
+router.use('/weather',    weatherRoutes);
 router.use('/admin',      adminRoutes);
 
 export default router;

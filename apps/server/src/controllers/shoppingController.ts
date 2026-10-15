@@ -1,206 +1,218 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../config/db';
+import { env } from '../config/env';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AppError } from '../utils/AppError';
+import { categoryGroup, scoreProduct, type ShoppingSignals } from '../services/shoppingRecommendations';
+import { normalizedMerchantHosts, presentOffers, primaryCurrentOffer, type StoredOffer } from '../services/catalogOffers';
+import { configuredCatalogAdapter } from '../services/catalogProvider';
+import { syncProductOffers } from '../services/syncProductOffers';
 
-// ── Static mock catalog ─────────────────────────────────────────────────
-// In production these would come from retailer API adapters
+const listSchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  category: z.string().trim().max(80).optional(),
+  store: z.string().trim().max(100).optional(),
+  sort: z.enum(['relevance', 'newest']).default('relevance'),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  perPage: z.coerce.number().int().min(1).max(50).default(12),
+}).strict();
+const itemSchema = z.object({ catalogItemId: z.string().cuid() }).strict();
+const removeSchema = z.union([
+  itemSchema,
+  z.object({ wishlistItemId: z.string().cuid() }).strict(),
+]);
+const sampleAllowed = env.NODE_ENV === 'development';
+const eligibleProduct = { isActive: true, ...(sampleAllowed ? {} : { isSample: false }) };
+const allowedMerchantHosts = normalizedMerchantHosts(env.SHOPPING_ALLOWED_MERCHANT_HOSTS);
+const offerOptions = { allowedHosts: allowedMerchantHosts, maxAgeMinutes: env.SHOPPING_OFFER_MAX_AGE_MINUTES };
 
-const MOCK_CATALOG = [
-  {
-    id: 'shop-1', title: 'Neutral Leather Sneakers', price: 4299, originalPrice: 5499,
-    rating: 4.7, reviewCount: 382, brand: 'Zara', category: 'shoes', similarity: 96,
-    imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&q=80',
-    offers: [
-      { store: 'Zara', productUrl: '#', price: 4299, discount: 22, rating: 4.7, availability: 'In stock' },
-      { store: 'Amazon', productUrl: '#', price: 4199, discount: 24, rating: 4.3, availability: 'In stock' },
-      { store: 'Myntra', productUrl: '#', price: 4399, discount: 20, rating: 4.6, availability: 'In stock' },
-    ],
-  },
-  {
-    id: 'shop-2', title: 'Relaxed Linen Trousers', price: 2599, originalPrice: 3199,
-    rating: 4.5, reviewCount: 218, brand: 'H&M', category: 'trousers', similarity: 88,
-    imageUrl: 'https://images.unsplash.com/photo-1594938298603-c8148c4b4e26?w=600&q=80',
-    offers: [
-      { store: 'H&M', productUrl: '#', price: 2599, discount: 18, rating: 4.5, availability: 'In stock' },
-    ],
-  },
-  {
-    id: 'shop-3', title: 'Structured Ivory Tank', price: 1899, originalPrice: 2399,
-    rating: 4.4, reviewCount: 157, brand: 'Myntra Luxe', category: 'tops', similarity: 84,
-    imageUrl: 'https://images.unsplash.com/photo-1485462537746-965f33f7f6a7?w=600&q=80',
-    offers: [
-      { store: 'Myntra', productUrl: '#', price: 1899, discount: 21, rating: 4.4, availability: 'In stock' },
-    ],
-  },
-  {
-    id: 'shop-4', title: 'Beige Wool Trench Coat', price: 8999, originalPrice: 11499,
-    rating: 4.8, reviewCount: 94, brand: 'Toteme', category: 'outerwear', similarity: 91,
-    imageUrl: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&q=80',
-    offers: [
-      { store: 'ASOS', productUrl: '#', price: 8999, discount: 22, rating: 4.8, availability: 'In stock' },
-    ],
-  },
-  {
-    id: 'shop-5', title: 'Gold Chain Bracelet', price: 1299, originalPrice: undefined,
-    rating: 4.6, reviewCount: 203, brand: 'Atelier Nine', category: 'accessories', similarity: 79,
-    imageUrl: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&q=80',
-    offers: [
-      { store: 'Nykaa Fashion', productUrl: '#', price: 1299, discount: 0, rating: 4.6, availability: 'In stock' },
-    ],
-  },
-  {
-    id: 'shop-6', title: 'White Oversized Blazer', price: 5499, originalPrice: 6999,
-    rating: 4.5, reviewCount: 166, brand: 'COS', category: 'blazers', similarity: 87,
-    imageUrl: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600&q=80',
-    offers: [
-      { store: 'COS', productUrl: '#', price: 5499, discount: 21, rating: 4.5, availability: 'In stock' },
-    ],
-  },
-];
+function authenticatedUserId(req: Request): string {
+  if (!req.user) { throw new AppError('Authentication required.', 401); }
+  return req.user.id;
+}
 
-const listQuerySchema = z.object({
-  search:   z.string().max(200).optional(),
-  category: z.string().optional(),
-  page:     z.coerce.number().int().min(1).default(1),
-  perPage:  z.coerce.number().int().min(1).max(50).default(12),
-});
+function missingCategories(value: unknown): string[] {
+  if (!Array.isArray(value)) {return [];}
+  return value.flatMap((entry) => entry && typeof entry === 'object' &&
+    'category' in entry && typeof entry.category === 'string' ? [entry.category] : []);
+}
 
-// ── Controllers ────────────────────────────────────────────────────────
+async function userSignals(userId: string): Promise<ShoppingSignals> {
+  const [wardrobe, inspirations, preferences, outfits] = await Promise.all([
+    prisma.clothingItem.findMany({ where: { userId, archived: false }, select: { category: true, colors: true } }),
+    prisma.inspirationMatch.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20,
+      select: { missingItems: true } }),
+    prisma.userPreference.findUnique({ where: { userId }, select: { preferredAesthetics: true, favoriteColors: true,
+      preferredCategories: true, preferredOccasions: true, styleDislikes: true,
+      budgetCurrency: true, budgetMax: true } }),
+    prisma.outfit.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20,
+      select: { occasion: true } }),
+  ]);
+  return {
+    wardrobeCategories: wardrobe.map((item) => item.category),
+    wardrobeColors: wardrobe.flatMap((item) => item.colors),
+    missingInspirationCategories: inspirations.flatMap((match) => missingCategories(match.missingItems)),
+    preferredAesthetics: preferences?.preferredAesthetics ?? [],
+    favoriteColors: preferences?.favoriteColors ?? [],
+    preferredCategories: preferences?.preferredCategories ?? [],
+    styleDislikes: preferences?.styleDislikes ?? [],
+    budgetCurrency: preferences?.budgetCurrency ?? null,
+    budgetMax: preferences?.budgetMax ? Number(preferences.budgetMax) : null,
+    requestedOccasions: [...(preferences?.preferredOccasions ?? []),
+      ...outfits.flatMap((outfit) => outfit.occasion ? [outfit.occasion] : [])],
+  };
+}
+
+export async function refreshShoppingRecommendationsForUser(userId: string): Promise<void> {
+  const [products, signals] = await Promise.all([
+    prisma.product.findMany({ where: eligibleProduct, select: { id: true, name: true, brand: true,
+      category: true, imageUrl: true, attributes: true, offers: true } }),
+    userSignals(userId),
+  ]);
+  for (const product of products) {
+    const currentOffers = presentOffers(product.offers, offerOptions)
+      .filter((offer) => offer.freshness === 'fresh' && offer.canBuy)
+      .map(({ price, currency }) => ({ price, currency }));
+    const scored = scoreProduct({ ...product, currentOffers }, signals);
+    await prisma.shoppingRecommendation.upsert({
+      where: { userId_productId: { userId, productId: product.id } },
+      create: { userId, productId: product.id, title: product.name, brand: product.brand,
+        category: product.category, imageUrl: product.imageUrl, reason: scored.reason,
+        similarity: scored.relevance, signals: scored.matchedSignals },
+      update: { title: product.name, brand: product.brand, category: product.category,
+        imageUrl: product.imageUrl, reason: scored.reason, similarity: scored.relevance,
+        signals: scored.matchedSignals },
+    });
+  }
+}
+
+function presentRecommendation(rec: { id: string; title: string; brand: string | null; category: string | null;
+  imageUrl: string | null; reason: string | null; similarity: number | null; signals: unknown;
+  wishlistItems: Array<{ id: string }>; product: { id: string; name: string; brand: string | null;
+    category: string | null; imageUrl: string | null; isSample: boolean; isActive: boolean;
+    offers: StoredOffer[] } | null }) {
+  const product = rec.product;
+  if (!product) {
+    return { id: rec.id, title: rec.title, brand: rec.brand, category: rec.category,
+      imageUrl: rec.imageUrl, reason: rec.reason, relevance: rec.similarity, signals: rec.signals,
+      isSample: false, available: false, wishlisted: rec.wishlistItems.length > 0,
+      price: null, originalPrice: null, currency: null, store: null, url: null, offers: [] };
+  }
+  const offers = presentOffers(product.offers, offerOptions);
+  const priced = primaryCurrentOffer(offers);
+  return { id: product.id, title: product.name, brand: product.brand, category: product.category,
+    imageUrl: product.imageUrl, reason: rec.reason, relevance: rec.similarity, signals: rec.signals,
+    isSample: product.isSample, available: product.isActive, wishlisted: rec.wishlistItems.length > 0,
+    price: priced?.price ?? null, originalPrice: null,
+    currency: priced?.currency ?? null, store: priced?.store ?? null, url: priced?.url ?? null,
+    offers };
+}
 
 export async function getShoppingRecommendations(req: Request, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const query  = listQuerySchema.parse(req.query);
-
-  let items = MOCK_CATALOG;
-
-  // Filter by search
-  if (query.search) {
-    const q = query.search.toLowerCase();
-    items = items.filter((i) =>
-      i.title.toLowerCase().includes(q) ||
-      i.brand.toLowerCase().includes(q) ||
-      i.category.toLowerCase().includes(q),
-    );
+  const userId = authenticatedUserId(req);
+  const query = listSchema.parse(req.query);
+  if (!await prisma.shoppingRecommendation.count({ where: { userId, productId: { not: null } } })) {
+    await refreshShoppingRecommendationsForUser(userId);
   }
+  const categories = query.category?.split(',').map((value) => categoryGroup(value.trim())).filter(Boolean) ?? [];
+  const stores = query.store?.split(',').map((value) => value.trim()).filter(Boolean) ?? [];
+  const offerCutoff = new Date(Date.now() - env.SHOPPING_OFFER_MAX_AGE_MINUTES * 60_000);
+  const where = { userId, similarity: { gt: 0 }, product: { ...eligibleProduct,
+    AND: [
+      ...(categories.length ? [{ OR: categories.map((value) => ({ category: { equals: value, mode: 'insensitive' as const } })) }] : []),
+      ...(query.search ? [{ OR: [
+      { name: { contains: query.search, mode: 'insensitive' as const } },
+      { brand: { contains: query.search, mode: 'insensitive' as const } },
+      { category: { contains: query.search, mode: 'insensitive' as const } },
+      ] }] : []),
+    ],
+    ...(stores.length ? { offers: { some: { AND: [
+      { OR: stores.map((value) => ({ retailer: { equals: value, mode: 'insensitive' as const } })) },
+      { observedAt: { gte: offerCutoff }, provider: { not: 'legacy' } },
+      { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+    ] } } } : {}),
+  } };
+  const [total, rows] = await Promise.all([
+    prisma.shoppingRecommendation.count({ where }),
+    prisma.shoppingRecommendation.findMany({ where, include: { product: { include: { offers: true } },
+      wishlistItems: { where: { userId }, select: { id: true } } },
+      orderBy: query.sort === 'newest' ? { createdAt: 'desc' } : [{ similarity: 'desc' }, { createdAt: 'desc' }],
+      skip: (query.page - 1) * query.perPage, take: query.perPage }),
+  ]);
+  ApiResponse.paginated(res, rows.map(presentRecommendation).filter((item) => item !== null),
+    { page: query.page, perPage: query.perPage, total, totalPages: Math.ceil(total / query.perPage) });
+}
 
-  // Filter by category
-  if (query.category) {
-    items = items.filter((i) => i.category.toLowerCase() === query.category!.toLowerCase());
-  }
-
-  // Get wishlist for this user
-  const wishlistRecs = await prisma.shoppingRecommendation.findMany({
-    where: { userId },
-    include: { wishlistItems: { where: { userId } } },
-  });
-  const wishlistedTitles = new Set(
-    wishlistRecs
-      .filter((r) => r.wishlistItems.length > 0)
-      .map((r) => r.title),
-  );
-
-  const total = items.length;
-  const paginated = items.slice((query.page - 1) * query.perPage, query.page * query.perPage);
-
-  ApiResponse.paginated(
-    res,
-    paginated.map((item) => ({
-      ...item,
-      wishlisted: wishlistedTitles.has(item.title),
-    })),
-    { page: query.page, perPage: query.perPage, total, totalPages: Math.ceil(total / query.perPage) },
-  );
+export async function refreshShoppingRecommendations(req: Request, res: Response): Promise<void> {
+  await refreshShoppingRecommendationsForUser(authenticatedUserId(req));
+  ApiResponse.success(res, { refreshed: true }, 'Recommendations refreshed from your saved wardrobe and style signals.');
 }
 
 export async function getPriceComparisons(req: Request, res: Response): Promise<void> {
-  const productId = typeof req.params['id'] === 'string' ? req.params['id'] : 'shop-1';
-  const item = MOCK_CATALOG.find((i) => i.id === productId);
+  const id = z.string().cuid().parse(req.params['id']);
+  const product = await prisma.product.findFirst({ where: { id, ...(sampleAllowed ? {} : { isSample: false }) },
+    include: { offers: true } });
+  if (!product) {throw new AppError('Product not found.', 404);}
+  ApiResponse.success(res, { product: { id: product.id, title: product.name, brand: product.brand,
+    imageUrl: product.imageUrl, isSample: product.isSample },
+  comparisons: presentOffers(product.offers, offerOptions) });
+}
 
-  if (!item) throw new AppError('Product not found.', 404);
+export async function getProductDetails(req: Request, res: Response): Promise<void> {
+  const id = z.string().cuid().parse(req.params['id']);
+  const product = await prisma.product.findFirst({ where: { id, ...(sampleAllowed ? {} : { isSample: false }) },
+    include: { offers: true } });
+  if (!product) { throw new AppError('Product not found.', 404); }
+  const offers = presentOffers(product.offers, offerOptions);
+  const adapter = configuredCatalogAdapter();
+  ApiResponse.success(res, { id: product.id, name: product.name, brand: product.brand,
+    category: product.category, description: product.description, imageUrl: product.imageUrl,
+    attributes: product.attributes, isSample: product.isSample, available: product.isActive,
+    updatedAt: product.updatedAt, offers,
+    canRefresh: Boolean(adapter && !product.isSample && product.isActive &&
+      product.source === adapter.id && product.sourceProductId) });
+}
 
-  ApiResponse.success(res, {
-    product: { id: item.id, title: item.title, brand: item.brand, imageUrl: item.imageUrl },
-    comparisons: item.offers.map((o) => ({
-      store: o.store,
-      price: o.price,
-      discount: o.discount,
-      rating: o.rating,
-      availability: o.availability,
-      url: o.productUrl,
-    })),
-  });
+export async function refreshProductOffers(req: Request, res: Response): Promise<void> {
+  authenticatedUserId(req);
+  const id = z.string().cuid().parse(req.params['id']);
+  const result = await syncProductOffers(id);
+  ApiResponse.success(res, result, 'Offer observations refreshed from the authorized provider.');
 }
 
 export async function addToWishlist(req: Request, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const { catalogItemId } = z.object({ catalogItemId: z.string().min(1) }).parse(req.body);
-
-  const catalogItem = MOCK_CATALOG.find((i) => i.id === catalogItemId);
-  if (!catalogItem) throw new AppError('Product not found.', 404);
-
-  // Upsert recommendation record
-  const rec = await prisma.shoppingRecommendation.upsert({
-    where: {
-      // There's no unique constraint on title alone, so find then upsert by userId+title
-      id: (await prisma.shoppingRecommendation.findFirst({
-        where: { userId, title: catalogItem.title },
-        select: { id: true },
-      }))?.id ?? '',
-    },
-    create: {
-      userId,
-      title:    catalogItem.title,
-      brand:    catalogItem.brand,
-      category: catalogItem.category,
-      imageUrl: catalogItem.imageUrl,
-      similarity: catalogItem.similarity,
-      productData: catalogItem as object,
-    },
-    update: {},
-  });
-
+  const userId = authenticatedUserId(req);
+  const { catalogItemId } = itemSchema.parse(req.body);
+  const product = await prisma.product.findFirst({ where: { id: catalogItemId, ...eligibleProduct } });
+  if (!product) {throw new AppError('Product not found or unavailable.', 404);}
+  let rec = await prisma.shoppingRecommendation.findUnique({ where: { userId_productId: { userId, productId: product.id } } });
+  if (!rec) {
+    await refreshShoppingRecommendationsForUser(userId);
+    rec = await prisma.shoppingRecommendation.findUnique({ where: { userId_productId: { userId, productId: product.id } } });
+  }
+  if (!rec) {throw new AppError('Recommendation unavailable.', 404);}
   await prisma.wishlistItem.upsert({
     where: { userId_shoppingRecommendationId: { userId, shoppingRecommendationId: rec.id } },
-    create: { userId, shoppingRecommendationId: rec.id },
-    update: {},
+    create: { userId, shoppingRecommendationId: rec.id }, update: {},
   });
-
-  ApiResponse.created(res, { wishlisted: true, itemId: catalogItemId }, 'Added to wishlist.');
+  ApiResponse.created(res, { wishlisted: true, itemId: product.id }, 'Added to wishlist.');
 }
 
 export async function removeFromWishlist(req: Request, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const { catalogItemId } = z.object({ catalogItemId: z.string().min(1) }).parse(req.body);
-
-  const catalogItem = MOCK_CATALOG.find((i) => i.id === catalogItemId);
-  if (!catalogItem) throw new AppError('Product not found.', 404);
-
-  const rec = await prisma.shoppingRecommendation.findFirst({
-    where: { userId, title: catalogItem.title },
-  });
-
-  if (rec) {
-    await prisma.wishlistItem.deleteMany({
-      where: { userId, shoppingRecommendationId: rec.id },
-    });
-  }
-
+  const userId = authenticatedUserId(req);
+  const target = removeSchema.parse(req.body);
+  await prisma.wishlistItem.deleteMany({ where: 'wishlistItemId' in target
+    ? { id: target.wishlistItemId, userId }
+    : { userId, recommendation: { userId, productId: target.catalogItemId } } });
   ApiResponse.noContent(res);
 }
 
 export async function getWishlist(req: Request, res: Response): Promise<void> {
-  const userId = req.user!.id;
-  const items = await prisma.wishlistItem.findMany({
-    where: { userId },
-    include: { recommendation: true },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  ApiResponse.success(res, items.map((w) => ({
-    id: w.id,
-    recommendation: w.recommendation,
-    createdAt: w.createdAt,
-  })));
+  const userId = authenticatedUserId(req);
+  const rows = await prisma.wishlistItem.findMany({ where: { userId },
+    include: { recommendation: { include: { product: { include: { offers: true } },
+      wishlistItems: { where: { userId }, select: { id: true } } } } }, orderBy: { createdAt: 'desc' } });
+  ApiResponse.success(res, rows.map((row) => ({ id: row.id, createdAt: row.createdAt,
+    item: presentRecommendation(row.recommendation) })));
 }

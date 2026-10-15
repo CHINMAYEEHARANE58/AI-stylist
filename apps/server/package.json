@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "ts-node --project tsconfig.json src/data/seed.ts",
     "test": "vitest run",
+    "test:smoke-style": "node scripts/smoke-style-flow.cjs",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",

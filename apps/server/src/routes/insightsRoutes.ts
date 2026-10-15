@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   getWardrobeInsights, getTrendInsights,
-  getNotifications, markNotificationRead, markAllRead, deleteNotification,
+  getNotifications, getUnreadCount, markNotificationRead, markAllRead, deleteNotification,
   getDashboardSummary,
 } from '../controllers/insightsController';
 import { requireAuth } from '../middleware/requireAuth';
@@ -19,6 +19,7 @@ router.get('/trends',           asyncHandler(getTrendInsights));
 
 // Notifications
 router.get('/notifications',    asyncHandler(getNotifications));
+router.get('/notifications/unread-count', asyncHandler(getUnreadCount));
 router.post('/notifications/mark-all-read', asyncHandler(markAllRead));
 router.patch('/notifications/:id/read', asyncHandler(markNotificationRead));
 router.delete('/notifications/:id',     asyncHandler(deleteNotification));

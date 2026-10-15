@@ -195,7 +195,7 @@ export async function updateWardrobeItem(req: Request, res: Response): Promise<v
   if (!existing) {throw new AppError('Item not found.', 404);}
 
   let uploaded: Awaited<ReturnType<typeof uploadImage>> | undefined;
-  if (req.file) uploaded = await uploadImage(req.file.buffer, userId, 'wardrobe');
+  if (req.file) {uploaded = await uploadImage(req.file.buffer, userId, 'wardrobe');}
   try {
     const item = await prisma.$transaction(async (tx) => {
       if (uploaded) {
@@ -209,10 +209,10 @@ export async function updateWardrobeItem(req: Request, res: Response): Promise<v
         },
       });
     });
-    if (uploaded && existing.images[0]?.providerAssetId) void deleteFromCloudinary(existing.images[0].providerAssetId);
+    if (uploaded && existing.images[0]?.providerAssetId) {void deleteFromCloudinary(existing.images[0].providerAssetId);}
     ApiResponse.success(res, item, uploaded ? 'Item and image updated.' : 'Item updated.');
   } catch (error) {
-    if (uploaded) void deleteFromCloudinary(uploaded.providerId);
+    if (uploaded) {void deleteFromCloudinary(uploaded.providerId);}
     throw error;
   }
 }
@@ -229,7 +229,7 @@ export async function deleteWardrobeItem(req: Request, res: Response): Promise<v
   await prisma.clothingItem.delete({ where: { id: item.id } });
 
   // Clean up cloud image
-  for (const image of item.images) if (image.providerAssetId) void deleteFromCloudinary(image.providerAssetId);
+  for (const image of item.images) {if (image.providerAssetId) {void deleteFromCloudinary(image.providerAssetId);}}
 
   ApiResponse.noContent(res);
 }
@@ -238,12 +238,12 @@ export async function deleteWardrobeImage(req: Request, res: Response): Promise<
   const userId = req.user!.id;
   const id = param(req, 'id');
   const item = await prisma.clothingItem.findFirst({ where: { id, userId }, include: { images: { where: { sortOrder: 0 }, select: { providerAssetId: true } } } });
-  if (!item) throw new AppError('Item not found.', 404);
+  if (!item) {throw new AppError('Item not found.', 404);}
   const updated = await prisma.$transaction(async (tx) => {
     await tx.clothingImage.deleteMany({ where: { clothingItemId: id, sortOrder: 0 } });
     return tx.clothingItem.update({ where: { id }, data: { imageUrl: '/wardrobe-item-1.svg', imageProviderId: null } });
   });
-  if (item.images[0]?.providerAssetId) void deleteFromCloudinary(item.images[0].providerAssetId);
+  if (item.images[0]?.providerAssetId) {void deleteFromCloudinary(item.images[0].providerAssetId);}
   ApiResponse.success(res, updated, 'Image removed.');
 }
 

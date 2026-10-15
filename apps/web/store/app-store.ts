@@ -138,7 +138,6 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: s.isAuthenticated,
         wardrobeView: s.wardrobeView,
         favoriteIds: s.favoriteIds,
-        wishlistIds: s.wishlistIds,
       }),
     },
   ),

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   changePassword, confirmEmailChange, deleteAccount, getProfile, requestEmailChangeCode,
-  updateProfile, updatePreferences, updateSettings,
+  updateProfile, updatePreferences, updateSettings, resetStylePreferences,
 } from '../controllers/profileController';
 import { requireAuth } from '../middleware/requireAuth';
 import { uploadSingle } from '../middleware/upload';
@@ -35,6 +35,7 @@ router.use(requireAuth);
 router.get( '/',            asyncHandler(getProfile));
 router.patch('/profile',    uploadSingle, asyncHandler(updateProfile));
 router.patch('/preferences', asyncHandler(updatePreferences));
+router.delete('/preferences', asyncHandler(resetStylePreferences));
 router.patch('/settings',    asyncHandler(updateSettings));
 router.post('/password', authLimiter, validate(passwordSchema), asyncHandler(changePassword));
 router.post('/email-change/request', authLimiter, validate(emailChangeRequestSchema), asyncHandler(requestEmailChangeCode));
