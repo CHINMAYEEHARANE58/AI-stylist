@@ -1,5 +1,6 @@
 /** Structured output from AI clothing analysis */
 export interface ClothingAnalysis {
+  name: string;
   category: string;
   subcategory?: string;
   colors: string[];
@@ -11,7 +12,7 @@ export interface ClothingAnalysis {
   seasons: string[];
   occasions: string[];
   aesthetics: string[];
-  description?: string;
+  description: string;
   confidence: number; // 0-1
 }
 

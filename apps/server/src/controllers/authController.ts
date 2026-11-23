@@ -136,9 +136,19 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
   ApiResponse.success(res, null, 'If an account exists, a password reset link has been sent.');
 }
 
+function googleAuthIsConfigured(): boolean {
+  return Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim() && env.GOOGLE_CALLBACK_URL?.trim()
+    && !env.GOOGLE_CLIENT_ID.startsWith('your-') && !env.GOOGLE_CLIENT_SECRET.startsWith('your-'));
+}
+
+export async function googleAuthStatus(_req: Request, res: Response): Promise<void> {
+  ApiResponse.success(res, { available: googleAuthIsConfigured() }, 'Google sign-in availability retrieved.');
+}
+
 export async function googleAuth(_req: Request, res: Response): Promise<void> {
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_CALLBACK_URL) {
-    throw new AppError('Google sign-in is not configured.', 503, true, 'GOOGLE_NOT_CONFIGURED');
+  if (!googleAuthIsConfigured()) {
+    res.redirect(`${env.FRONTEND_URL}/login?error=google_signin_unavailable`);
+    return;
   }
   const state = randomBytes(32).toString('base64url');
   const codeVerifier = randomBytes(64).toString('base64url');
@@ -165,7 +175,7 @@ export async function googleCallback(req: Request, res: Response): Promise<void>
     res.redirect(`${env.FRONTEND_URL}/login?error=google_signin_failed`);
     return;
   }
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_CALLBACK_URL) {
+  if (!googleAuthIsConfigured()) {
     res.redirect(`${env.FRONTEND_URL}/login?error=google_signin_unavailable`);
     return;
   }
@@ -271,7 +281,13 @@ export async function refresh(req: Request, res: Response): Promise<void> {
   const safeUser = presentUser(current.user);
   const next = await prisma.$transaction(async (tx) => {
     const refreshed = await createRefreshSession({ ...safeUser, role: current.user.role }, userAgent(req), req.ip, tx);
-    await tx.refreshSession.update({ where: { id: current.id }, data: { revokedAt: new Date(), replacedBy: refreshed.session.id } });
+    // The conditional write is atomic: concurrent refreshes of the same token
+    // cannot both mint valid successor sessions.
+    const rotated = await tx.refreshSession.updateMany({
+      where: { id: current.id, revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { revokedAt: new Date(), replacedBy: refreshed.session.id },
+    });
+    if (rotated.count !== 1) { throw new AppError('Session expired. Please log in again.', 401); }
     return refreshed;
   });
   setAuthCookies(res, { ...safeUser, role: current.user.role }, next.refreshToken, next.expiresAt);

@@ -83,4 +83,11 @@ describe('computed insights, dashboard and notifications', () => {
     expect((await request(server).post('/insights/notifications/mark-all-read').set('Cookie', cookie('user-a'))).status).toBe(200);
     expect(mocks.notificationUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'user-a', readAt: null } }));
   });
+
+  it('rejects notification writes from an untrusted browser origin', async () => {
+    const response = await request(app()).post('/insights/notifications/mark-all-read')
+      .set('Cookie', cookie('user-a')).set('Origin', 'https://attacker.example');
+    expect(response.status).toBe(403);
+    expect(mocks.notificationUpdateMany).not.toHaveBeenCalled();
+  });
 });

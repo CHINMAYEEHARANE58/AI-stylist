@@ -161,6 +161,9 @@ export const authApi = {
 
   googleSignInUrl: () => `${API_BASE_URL}/auth/google`,
 
+  googleStatus: () =>
+    apiFetch<ApiSuccessResponse<{ available: boolean }>>("/auth/google/status"),
+
   logout: () =>
     apiFetch<ApiSuccessResponse<null>>("/auth/logout", { method: "POST" }),
 
@@ -313,6 +316,7 @@ export const wardrobeApi = {
       imageUrl: string;
       providerId?: string;
       analysis: {
+        name: string;
         category: string;
         subcategory?: string;
         colors: string[];
@@ -324,7 +328,7 @@ export const wardrobeApi = {
         seasons: string[];
         occasions: string[];
         aesthetics: string[];
-        description?: string;
+        description: string;
         confidence: number;
       };
       provider: string;

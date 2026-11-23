@@ -5,10 +5,12 @@ import {
   getDashboardSummary,
 } from '../controllers/insightsController';
 import { requireAuth } from '../middleware/requireAuth';
+import { authOriginGuard } from '../middleware/authOriginGuard';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 router.use(requireAuth);
+router.use(authOriginGuard);
 
 // Dashboard
 router.get('/dashboard',        asyncHandler(getDashboardSummary));

@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Chrome, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { profileAesthetics } from "@/lib/mock-data";
 import { authApi } from "@/lib/api-client";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -57,10 +58,7 @@ export default function SignupPage() {
           </Link>
         </p>
 
-        <Button variant="outline" className="mt-8 w-full gap-3" type="button" onClick={() => { window.location.assign(authApi.googleSignInUrl()); }}>
-          <Chrome className="h-4 w-4" />
-          Continue with Google
-        </Button>
+        <GoogleSignInButton />
 
         <div className="my-6 flex items-center gap-3">
           <Separator className="flex-1" />

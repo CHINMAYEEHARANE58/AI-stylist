@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
 
@@ -17,7 +17,7 @@ const envSchema = z.object({
     .default('http://localhost:3000,http://localhost:3001')
     .transform((s) => s.split(',').map((o) => o.trim())),
 
-  FRONTEND_URL: z.string().default('http://localhost:3000'),
+  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
 
   EMAIL_FROM: z.string().min(3).optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
@@ -31,13 +31,14 @@ const envSchema = z.object({
   INSPIRATION_LOCAL_DIR: z.string().min(1).optional(),
 
   // AI providers
-  AI_PROVIDER: z.enum(['openai', 'mock']).default('openai'),
+  AI_PROVIDER: z.enum(['openai', 'gemini', 'mock']).default('openai'),
   AI_VISION_MODEL: z.string().min(1).default('gpt-4o'),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
   AI_ANALYSIS_CACHE_MINUTES: z.coerce.number().int().min(1).max(10_080).default(1_440),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.5-flash-lite'),
 
   // Weather
   WEATHER_PROVIDER: z.enum(['none', 'open-meteo']).default('none'),
@@ -56,6 +57,22 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().url().optional(),
+}).superRefine((config, context) => {
+  if (config.NODE_ENV !== 'production') { return; }
+  const required = (value: string | undefined, path: string, message: string) => {
+    if (!value?.trim()) { context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message }); }
+  };
+  required(config.DATABASE_URL, 'DATABASE_URL', 'A PostgreSQL connection is required in production.');
+  if (!config.JWT_SECRET || config.JWT_SECRET.length < 32 || config.JWT_SECRET === 'closetai-dev-secret-change-in-production') {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_SECRET'], message: 'Set a unique 32+ character production JWT secret.' });
+  }
+  if (!config.FRONTEND_URL.startsWith('https://')) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['FRONTEND_URL'], message: 'Production frontend URL must use HTTPS.' });
+  }
+  if (config.ALLOWED_ORIGINS.length === 0 || config.ALLOWED_ORIGINS.some((origin) => !origin.startsWith('https://'))
+    || !config.ALLOWED_ORIGINS.includes(new URL(config.FRONTEND_URL).origin)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['ALLOWED_ORIGINS'], message: 'Allow only HTTPS origins and include the frontend origin.' });
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);

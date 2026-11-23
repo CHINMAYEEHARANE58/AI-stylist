@@ -142,6 +142,12 @@ export async function uploadToCloudinary(buffer: Buffer, storageKey: string, met
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream({ public_id: storageKey, resource_type: 'image', overwrite: false, invalidate: true, format: metadata.extension, transformation: [{ width: 1200, height: 1600, crop: 'limit', quality: 'auto:good' }] }, (error, result) => {
       if (error || !result) {
+        if (error?.http_code === 401 || error?.http_code === 403) {
+          // Never log or return Cloudinary's raw error: it can echo signed parameters.
+          logger.warn('Cloud image storage rejected authentication. Check the configured Cloudinary credentials.');
+          reject(new AppError('Image storage authentication failed. Your item was not changed.', 503, true, 'STORAGE_AUTH_FAILED'));
+          return;
+        }
         reject(new AppError('Image upload failed. Your item was not changed.', 502, true, 'IMAGE_UPLOAD_FAILED'));
         return;
       }

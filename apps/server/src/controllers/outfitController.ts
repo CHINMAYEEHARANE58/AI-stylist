@@ -102,10 +102,17 @@ function matchesGenerationFilters(item: WardrobeItemSummary, input: z.infer<type
     || values.length === 0
     || values.some((value) => value.toLowerCase() === requested.toLowerCase())
     || (includeAllSeason && values.some((value) => value.toLowerCase() === 'all season'));
-  return matches(item.seasons, input.season, true)
-    && matches(item.occasions, input.occasion)
-    && matches(item.aesthetics, input.aesthetic)
-    && matches(item.colors, input.colorPreference);
+  // A season can restrict suitability, but a colour/mood/occasion describes the
+  // whole look. Requiring every piece to have those exact tags removes companions.
+  return input.season?.toLowerCase() === 'all season' || matches(item.seasons, input.season, true);
+}
+
+function generationPreferenceScore(item: WardrobeItemSummary, input: z.infer<typeof generateSchema>): number {
+  const matches = (values: string[], desired?: string) => desired
+    && values.some((value) => value.toLowerCase() === desired.toLowerCase()) ? 1 : 0;
+  return matches(item.colors, input.colorPreference) * 3
+    + matches(item.aesthetics, input.aesthetic) * 2
+    + matches(item.occasions, input.occasion);
 }
 
 // ── Controllers ────────────────────────────────────────────────────────
@@ -121,15 +128,15 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
   if (event && event.startsAt < new Date()) {throw new AppError('Choose an upcoming event for outfit suggestions.', 422);}
   const wardrobe = await getUserWardrobeForAI(userId);
 
-  if (wardrobe.length < 2) {
-    ApiResponse.success(res, { outfits: [], minimumItems: 2 }, 'Add at least two wardrobe items to generate a complete outfit.');
-    return;
-  }
-
   // Validate anchorItemId belongs to user
   if (input.anchorItemId) {
     const anchorItem = wardrobe.find((w) => w.id === input.anchorItemId);
     if (!anchorItem) {throw new AppError('Anchor item not found in your wardrobe.', 404);}
+  }
+
+  if (wardrobe.length < 2) {
+    ApiResponse.success(res, { outfits: [], minimumItems: 2 }, 'Add at least two wardrobe items to generate a complete outfit.');
+    return;
   }
 
   const userPrefs = await prisma.userPreference.findUnique({
@@ -142,9 +149,10 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
     notes: input.notes ?? (event ? `${event.title}. ${event.description ?? ''}`.trim().slice(0, 500) : undefined) };
   const eligibleWardrobe = wardrobe.filter((item) => matchesGenerationFilters(item, effectiveInput)
     && !(userPrefs?.styleDislikes ?? []).some((dislike) => [item.name, item.category, ...item.colors,
-      ...item.aesthetics].some((value) => value.toLowerCase().includes(dislike.toLowerCase()))));
+      ...item.aesthetics].some((value) => value.toLowerCase().includes(dislike.toLowerCase()))))
+    .sort((a, b) => generationPreferenceScore(b, effectiveInput) - generationPreferenceScore(a, effectiveInput));
   if (eligibleWardrobe.length < 2) {
-    ApiResponse.success(res, { outfits: [], minimumItems: 2 }, 'Not enough wardrobe items match those filters. Adjust a filter or add more items.');
+    ApiResponse.success(res, { outfits: [], minimumItems: 2 }, 'Not enough available items suit this season and your saved dislikes. Choose another season or add more items.');
     return;
   }
   if (input.anchorItemId && !eligibleWardrobe.some((item) => item.id === input.anchorItemId)) {
@@ -179,7 +187,7 @@ export async function generateOutfitRecommendations(req: Request, res: Response)
   const itemMap = new Map(itemsById.map((i) => [i.id, i]));
   const eligibleIds = new Set(eligibleWardrobe.map((item) => item.id));
   const currentEligibleIds = new Set([...eligibleIds].filter((id) => itemMap.has(id)));
-  const safeOutfits = keepEligibleOutfits(result.outfits, currentEligibleIds);
+  const safeOutfits = keepEligibleOutfits(result.outfits, currentEligibleIds, input.anchorItemId);
 
   const outfitsWithItems = safeOutfits.map((o) => ({
     ...o,

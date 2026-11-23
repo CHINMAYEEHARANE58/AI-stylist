@@ -8,9 +8,12 @@ const AUTH_ONLY_PATHS = ["/dashboard", "/wardrobe", "/outfits", "/saved-outfits"
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check if the user has an access cookie
+  // A refresh-only session must reach AuthBootstrap so it can rotate the
+  // server-side refresh token and restore the short-lived access cookie.
   const accessToken = request.cookies.get("closetai_access")?.value;
+  const refreshToken = request.cookies.get("closetai_refresh")?.value;
   const isAuthenticated = !!accessToken;
+  const canRestoreSession = !!refreshToken;
 
   // If visiting an auth page while logged in, redirect to dashboard
   if (isAuthenticated && PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
@@ -19,7 +22,7 @@ export function middleware(request: NextRequest) {
 
   // If visiting a protected page without auth, redirect to login
   const isProtected = AUTH_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
-  if (!isAuthenticated && isProtected) {
+  if (!isAuthenticated && !canRestoreSession && isProtected) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);

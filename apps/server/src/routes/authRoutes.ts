@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
-  forgotPassword, getMe, googleAuth, googleCallback, login, logout, refresh, resendVerification,
+  forgotPassword, getMe, googleAuth, googleAuthStatus, googleCallback, login, logout, refresh, resendVerification,
   resetPassword, signup, verifyEmail,
 } from '../controllers/authController';
 import { requireAuth } from '../middleware/requireAuth';
@@ -46,6 +46,7 @@ router.post('/forgot-password', authLimiter, validate(forgotSchema),  asyncHandl
 router.post('/verify-email',    authLimiter, validate(verifyEmailSchema), asyncHandler(verifyEmail));
 router.post('/resend-verification', authLimiter, validate(forgotSchema), asyncHandler(resendVerification));
 router.post('/reset-password',  authLimiter, validate(resetSchema),   asyncHandler(resetPassword));
+router.get('/google/status',                                            asyncHandler(googleAuthStatus));
 router.get('/google',           authLimiter,                          asyncHandler(googleAuth));
 router.get('/google/callback',  authLimiter,                          asyncHandler(googleCallback));
 router.post('/refresh',         authLimiter,                          asyncHandler(refresh));

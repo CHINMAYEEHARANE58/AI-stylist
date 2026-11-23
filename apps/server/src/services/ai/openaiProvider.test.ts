@@ -13,12 +13,13 @@ describe('OpenAIProvider clothing analysis', () => {
 
   it('accepts only the strict clothing-analysis shape', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(providerResponse(JSON.stringify({
-      category: 'tops', colors: ['Ivory'], seasons: ['Summer'], occasions: ['Casual'],
+      name: 'Ivory sleeveless top', category: 'tops', colors: ['Ivory'], seasons: ['Summer'], occasions: ['Casual'],
       aesthetics: ['Minimal'], confidence: 0.91, description: 'An ivory sleeveless top.',
     }))));
 
     const analysis = await new OpenAIProvider('test-key', 'test-model').analyzeClothingImage(image);
     expect(analysis.category).toBe('tops');
+    expect(analysis.name).toBe('Ivory sleeveless top');
     expect(analysis.description).toBe('An ivory sleeveless top.');
   });
 
@@ -36,6 +37,17 @@ describe('OpenAIProvider clothing analysis', () => {
 
     await expect(new OpenAIProvider('test-key', 'test-model').analyzeClothingImage(image))
       .rejects.toMatchObject<AppError>({ code: 'AI_RATE_LIMITED', statusCode: 429 });
+  });
+
+  it('rejects incomplete analysis and values that cannot select the existing form controls', async () => {
+    const valid = { name: 'Ivory top', category: 'tops', colors: ['Ivory'], description: 'An ivory top.',
+      seasons: ['Summer'], occasions: ['Casual'], aesthetics: ['Minimal'], confidence: 0.9 };
+    for (const invalid of [{ ...valid, name: undefined }, { ...valid, category: 'invented-category' },
+      { ...valid, seasons: ['hot weather'] }, { ...valid, occasions: [] }, { ...valid, description: undefined }]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(providerResponse(JSON.stringify(invalid))));
+      await expect(new OpenAIProvider('test-key', 'test-model').analyzeClothingImage(image))
+        .rejects.toMatchObject<AppError>({ code: 'AI_MALFORMED_RESPONSE', statusCode: 502 });
+    }
   });
 });
 

@@ -27,6 +27,8 @@ export const outfitGenerationResultSchema = z.object({
 export function keepEligibleOutfits(
   outfits: GeneratedOutfit[],
   eligibleItemIds: ReadonlySet<string>,
+  anchorItemId?: string,
 ): GeneratedOutfit[] {
-  return outfits.filter((outfit) => outfit.clothingItemIds.every((id) => eligibleItemIds.has(id)));
+  return outfits.filter((outfit) => outfit.clothingItemIds.every((id) => eligibleItemIds.has(id))
+    && (!anchorItemId || outfit.clothingItemIds.includes(anchorItemId)));
 }

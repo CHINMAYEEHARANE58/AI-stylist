@@ -4,6 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../middleware/errorHandler';
 import { signToken } from '../utils/token';
+import { outfitGenerationLimiter } from '../middleware/rateLimiter';
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -41,6 +42,7 @@ function createApp() {
 describe('style this item route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    outfitGenerationLimiter.resetKey('::ffff:127.0.0.1');
     mocks.findFirst.mockResolvedValue(anchor);
     mocks.findMany.mockResolvedValueOnce([companion]).mockResolvedValueOnce([anchor, companion]);
     mocks.styleThisItem.mockResolvedValue({ looks: [validLook], provider: 'test', model: 'test-model' });
@@ -102,6 +104,7 @@ describe('outfit generation preference and event integration', () => {
   const eventId = 'clx00000000000000000000001';
   beforeEach(() => {
     vi.clearAllMocks();
+    outfitGenerationLimiter.resetKey('::ffff:127.0.0.1');
     mocks.findMany.mockResolvedValueOnce([anchor, companion]).mockResolvedValueOnce([anchor, companion]);
     mocks.preferenceFindUnique.mockResolvedValue({ preferredAesthetics: ['Minimal'], favoriteColors: ['Ivory'],
       preferredCategories: ['tops'], preferredOccasions: ['Office'], fitPreferences: ['Relaxed'],
@@ -141,5 +144,46 @@ describe('outfit generation preference and event integration', () => {
     expect((await request(createApp()).post('/outfits/generate').set('Cookie', cookie)
       .send({ eventId })).status).toBe(422);
     expect(mocks.generateOutfits).not.toHaveBeenCalled();
+  });
+
+  it('keeps complementary colours and styles when generating around a bag', async () => {
+    const bag = { ...anchor, id: 'bag', name: 'Blue and white bag', category: 'accessories', colors: ['Blue', 'White'], occasions: ['Casual'], aesthetics: ['Romantic'] };
+    const jeans = { ...companion, id: 'jeans', colors: ['Blue'], occasions: ['Casual'], aesthetics: ['Classic'] };
+    const top = { ...anchor, id: 'top', colors: ['Ivory'], occasions: ['Casual'], aesthetics: ['Romantic'] };
+    mocks.findMany.mockReset().mockResolvedValueOnce([jeans, top, bag]).mockResolvedValueOnce([jeans, top, bag]);
+    mocks.generateOutfits.mockResolvedValue({ provider: 'test', model: 'test-model', outfits: [{
+      title: 'Relaxed summer', clothingItemIds: ['bag', 'top', 'jeans'], occasion: 'Casual',
+      aesthetic: 'Relaxed', explanation: 'A light top balances blue denim and the white accents in the bag.', score: 88,
+    }] });
+    const response = await request(createApp()).post('/outfits/generate').set('Cookie', cookie)
+      .send({ anchorItemId: 'bag', colorPreference: 'White', aesthetic: 'Relaxed', mood: 'Relaxed', season: 'Summer', occasion: 'Casual' });
+    expect(response.status).toBe(200);
+    expect(response.body.data.outfits).toHaveLength(1);
+    const input = mocks.generateOutfits.mock.calls[0][0];
+    expect(input.wardrobeItems.map((item: { id: string }) => item.id)).toEqual(['bag', 'jeans', 'top']);
+    expect(input).toMatchObject({ anchorItemId: 'bag', colorPreference: 'White', aesthetic: 'Relaxed' });
+  });
+
+  it('treats All season as unrestricted and retains archived/ownership checks in the database query', async () => {
+    const response = await request(createApp()).post('/outfits/generate').set('Cookie', cookie)
+      .send({ season: 'All season', colorPreference: 'White', aesthetic: 'Relaxed' });
+    expect(response.body.data.outfits).toHaveLength(1);
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'user-a', archived: false } }));
+  });
+
+  it('still excludes a different season and saved dislikes before sending records to AI', async () => {
+    mocks.findMany.mockReset().mockResolvedValue([{ ...anchor, seasons: ['Winter'] }, { ...companion, colors: ['Neon'] }]);
+    const response = await request(createApp()).post('/outfits/generate').set('Cookie', cookie).send({ season: 'Summer' });
+    expect(response.body.data.outfits).toEqual([]);
+    expect(mocks.generateOutfits).not.toHaveBeenCalled();
+  });
+
+  it('does not return a look that omits the selected anchor', async () => {
+    mocks.generateOutfits.mockResolvedValue({ provider: 'test', model: 'test-model', outfits: [{
+      title: 'Missing anchor', clothingItemIds: ['companion-a'], occasion: 'Office', aesthetic: 'Minimal', explanation: 'Incomplete.', score: 50,
+    }] });
+    const response = await request(createApp()).post('/outfits/generate').set('Cookie', cookie).send({ anchorItemId: 'anchor-a' });
+    expect(response.status).toBe(200);
+    expect(response.body.data.outfits).toEqual([]);
   });
 });

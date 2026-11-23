@@ -9,6 +9,7 @@ import type { AIProvider } from './types';
 import { MockAIProvider } from './mockProvider';
 import { AppError } from '../../utils/AppError';
 import { createOpenAIProvider } from './openaiProvider';
+import { GeminiProvider } from './geminiProvider';
 
 let _provider: AIProvider | null = null;
 
@@ -39,7 +40,12 @@ export function getAIProvider(): AIProvider {
     return _provider;
   }
 
-  if (env.OPENAI_API_KEY) {
+  if (env.AI_PROVIDER === 'gemini' && env.GEMINI_API_KEY?.trim() && !env.GEMINI_API_KEY.startsWith('AIza...')) {
+    _provider = new GeminiProvider(env.GEMINI_API_KEY);
+    return _provider;
+  }
+
+  if (env.AI_PROVIDER === 'openai' && env.OPENAI_API_KEY) {
     _provider = createOpenAIProvider(env.OPENAI_API_KEY);
     return _provider;
   }

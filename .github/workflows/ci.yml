@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: closetai_ci
+          POSTGRES_USER: closetai_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U closetai_ci -d closetai_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      PORT: 4000
+      DATABASE_URL: postgresql://closetai_ci:ci-only-password@localhost:5432/closetai_ci?schema=public
+      JWT_SECRET: ci-only-random-looking-secret-32-characters-minimum
+      FRONTEND_URL: http://localhost:3001
+      ALLOWED_ORIGINS: http://localhost:3001
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+      AI_PROVIDER: openai
+      WEATHER_PROVIDER: none
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Generate Prisma client and validate schema
+        run: |
+          npm run db:generate --workspace closetai-server
+          npx prisma validate --schema apps/server/prisma/schema.prisma
+      - name: Apply migrations to isolated PostgreSQL service
+        run: |
+          npm run db:deploy --workspace closetai-server
+          cd apps/server && npx prisma migrate status
+      - name: Lint and type-check both applications
+        run: |
+          npm run lint --workspace closetai-server
+          npm run lint --workspace web
+          npm run typecheck --workspace closetai-server
+          npm run typecheck --workspace web
+      - name: Run unit and API tests
+        run: |
+          npm test --workspace closetai-server
+          npm test --workspace web
+      - name: Build both applications
+        run: npm run build
+      - name: Run live API smoke flow against isolated database
+        run: |
+          npm run start --workspace closetai-server > "$RUNNER_TEMP/closetai-api.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:4000/api/v1/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://localhost:4000/api/v1/health > /dev/null
+          npm run test:smoke-style --workspace closetai-server
+      - name: Dependency security gate
+        run: npm audit --omit=dev --audit-level=high

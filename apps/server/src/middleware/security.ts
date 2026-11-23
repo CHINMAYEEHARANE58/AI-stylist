@@ -5,6 +5,7 @@ import type { Application } from 'express';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { isAllowedOrigin } from '../config/origins';
+import { AppError } from '../utils/AppError';
 
 export function applySecurityMiddleware(app: Application): void {
   // ── Helmet (sets secure HTTP headers) ────────────────────────────────
@@ -27,7 +28,7 @@ export function applySecurityMiddleware(app: Application): void {
         callback(null, true);
       } else {
         logger.warn(`CORS blocked origin: ${origin}`);
-        callback(new Error(`Origin ${origin} not allowed by CORS.`));
+        callback(new AppError('Request origin is not allowed.', 403, true, 'INVALID_ORIGIN'));
       }
     },
     credentials: true,

@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Chrome, Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { Suspense, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ApiError, authApi } from "@/lib/api-client";
 import { useAppStore } from "@/store/app-store";
+import { safeReturnPath } from "@/lib/safe-return-path";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 function LoginForm() {
   const router = useRouter();
@@ -31,7 +33,7 @@ function LoginForm() {
     try {
       const res = await authApi.login({ email, password });
       login(res.data.user);
-      const from = searchParams.get("from") ?? "/dashboard";
+      const from = safeReturnPath(searchParams.get("from"));
       router.push(from);
     } catch (err: unknown) {
       if (err instanceof ApiError && err.code === "EMAIL_UNVERIFIED") {
@@ -62,11 +64,7 @@ function LoginForm() {
           </Link>
         </p>
 
-        {/* Google placeholder */}
-        <Button variant="outline" className="mt-8 w-full gap-3" type="button" onClick={() => { window.location.assign(authApi.googleSignInUrl()); }}>
-          <Chrome className="h-4 w-4" />
-          Continue with Google
-        </Button>
+        <GoogleSignInButton />
 
         <div className="my-6 flex items-center gap-3">
           <Separator className="flex-1" />

@@ -26,6 +26,7 @@ export class MockAIProvider implements AIProvider {
 
   async analyzeClothingImage(_imageUrl: string): Promise<ClothingAnalysis> {
     return {
+      name: 'Development sample garment (mock)',
       category: pick(['tops', 'blazers', 'jeans', 'dresses', 'outerwear', 'skirts', 'shoes', 'accessories']),
       subcategory: undefined,
       colors: pickN(['Ivory', 'Black', 'Camel', 'White', 'Navy', 'Beige', 'Grey'], 2),

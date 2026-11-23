@@ -2,13 +2,15 @@
 
 ClosetAI is a modern AI-powered fashion styling platform that helps users digitize their wardrobe, generate outfits from clothes they already own, recreate Pinterest-inspired looks, and receive AI-assisted shopping recommendations with price comparison.
 
+**Deployment status (2026-11-14):** local API, database, tests, and builds work, but ClosetAI is not verified for real-user deployment. Email delivery, Google sign-in, permanent image storage, live AI, provider-backed shopping, physical-phone journeys, and a public HTTPS deployment still need configuration and testing. See the [feature-by-feature audit](docs/PROJECT_AUDIT.md), [executed test plan](docs/TEST_PLAN.md), and [deployment checklist](docs/DEPLOYMENT_READINESS.md). Feature descriptions below include interfaces and optional integrations; they are not a claim that every production flow is ready.
+
 ## Stack
 
 - Frontend: Next.js, React, Tailwind CSS, Framer Motion, Zustand
 - Backend: Node.js, Express, TypeScript
 - Database: PostgreSQL with Prisma
 - Auth: password sign-up with email verification, secure cookie sessions, password resets, and optional Google OAuth
-- AI placeholders: outfit generation, wardrobe tagging, Pinterest matching, shopping recommendations
+- AI: server-side provider integration for clothing analysis, outfit generation, Pinterest matching, and stylist chat; live use requires provider credentials
 
 ## Project Structure
 
@@ -35,7 +37,7 @@ ClosetAI is a modern AI-powered fashion styling platform that helps users digiti
 └── package.json
 ```
 
-## Features Included
+## Feature Interfaces (see audit status above)
 
 - Premium landing page with animated hero, feature grid, carousel, testimonials, and footer
 - Auth flows for sign up, six-digit email verification, login, password reset, logout, persistent sessions, and Google sign-in
@@ -72,24 +74,29 @@ NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
 
 For local development, email verification and reset links are printed only to the server console when `NODE_ENV=development` and no Resend credentials are configured. In production, configure both `EMAIL_FROM` and `RESEND_API_KEY`; the API deliberately fails closed instead of pretending to send an email.
 
-To enable Google, register the callback URL `http://localhost:4000/api/v1/auth/google/callback` with Google and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL`. Production values must use your HTTPS application URLs. The authorization flow uses state and PKCE.
+To enable Google, follow [Google sign-in setup](docs/GOOGLE_SIGN_IN.md). Register the exact callback URL `http://localhost:4000/api/v1/auth/google/callback` and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL` in the backend environment. Production values must use your HTTPS application URLs. The authorization flow uses state and PKCE. Without these credentials, the app shows a sign-in-page message instead of sending you to a raw API error.
 
 For PostgreSQL setup, migrations, development-only seed data, and the backend structure, see [Backend foundation](docs/backend-foundation.md).
 
 ## Getting Started
 
-Install dependencies:
+Install dependencies and apply existing migrations to your **development** database:
 
 ```bash
-npm install --cache .npm-cache
-npm run db:migrate --workspace closetai-server
+npm ci --cache .npm-cache
+npm run db:generate --workspace closetai-server
+npm run db:deploy --workspace closetai-server
 ```
+
+On this Mac, `brew services start postgresql@16` starts the local PostgreSQL service if it is stopped. Set a local `DATABASE_URL` in `apps/server/.env` first; never point the development or isolated test commands at production.
 
 Run the frontend and backend together:
 
 ```bash
 npm run dev
 ```
+
+The combined command uses port 3000 by default. The audited running instance uses port 3001; start it with `npm run dev --workspace web -- --port 3001` in one terminal and `npm run dev --workspace closetai-server` in another, with `FRONTEND_URL` and `ALLOWED_ORIGINS` set to `http://localhost:3001` in the backend environment.
 
 Frontend:
 
@@ -142,7 +149,7 @@ Outfits:
 
 The wardrobe upload screen sends the selected JPEG, PNG, or WebP to the backend, where its real bytes and dimensions are validated before it is sent to the configured vision provider. The browser never receives or uses an AI provider credential. ClosetAI validates the provider's JSON response with a strict schema, then presents it as editable suggestions; only the user's confirmed item details are saved.
 
-Set these variables in `apps/server/.env` to enable real analysis:
+See [clothing analysis setup](docs/CLOTHING_ANALYSIS.md) to use Gemini (`AI_PROVIDER=gemini` and `GEMINI_API_KEY`) or OpenAI. For OpenAI, set these variables in `apps/server/.env`:
 
 ```bash
 AI_PROVIDER=openai

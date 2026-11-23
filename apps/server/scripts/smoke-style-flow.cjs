@@ -5,9 +5,12 @@ const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
 
 const endpoint = process.env.SMOKE_API_URL || 'http://localhost:4000/api/v1';
-if (process.env.NODE_ENV && process.env.NODE_ENV !== 'development') throw new Error('Development only.');
-if (!process.env.DATABASE_URL || !['localhost', '127.0.0.1'].includes(new URL(process.env.DATABASE_URL).hostname)) {
-  throw new Error('Only a local development PostgreSQL database is allowed.');
+if (process.env.NODE_ENV && !['development', 'test'].includes(process.env.NODE_ENV)) throw new Error('Development/test only.');
+const databaseUrl = process.env.DATABASE_URL && new URL(process.env.DATABASE_URL);
+const databaseName = databaseUrl && decodeURIComponent(databaseUrl.pathname.slice(1));
+if (!databaseUrl || !['localhost', '127.0.0.1'].includes(databaseUrl.hostname)
+  || !(databaseName === 'closetai_ci' || databaseName.startsWith('closetai_audit_'))) {
+  throw new Error('Only a disposable local closetai_ci/closetai_audit_* database is allowed.');
 }
 if (!['localhost', '127.0.0.1'].includes(new URL(endpoint).hostname)) throw new Error('Only a local API is allowed.');
 
