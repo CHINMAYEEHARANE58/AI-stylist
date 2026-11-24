@@ -44,6 +44,14 @@ Password changes require the current password and revoke all refresh sessions. E
 
 Avatar and wardrobe files are validated and sent to Cloudinary when `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are available. PostgreSQL retains only the resulting URL and metadata; uploads fail closed when storage is unavailable.
 
+## Wardrobe management tools (2026-11-24)
+
+The Wardrobe page supports Active/Archived views, a favorites-only filter, and newest/oldest/name/category sorting. Sorting uses the record ID as a stable tie-breaker. **Select items** enables checkboxes and **Select this page**; selection is scoped to the visible page and cleared when the search, filters, page or view changes. Bulk favorite/unfavorite and archive/restore persist in PostgreSQL. An archived item retains its image and details and can be restored; it is excluded from new outfit suggestions.
+
+`PATCH /api/v1/wardrobe/bulk` accepts only `{ "itemIds": ["..."], "action": "favorite|unfavorite|archive|restore" }`, with 1–100 distinct IDs. Authentication, the origin guard, and strict Zod validation apply before the transaction. Updates always include the authenticated `userId`; if any ID is missing or foreign, the entire transaction rolls back and returns a generic 404. Actions set the desired state rather than toggling it, so retries are idempotent. No schema migration is needed. Loading/failure states retain the selection for retry, and successful changes invalidate wardrobe, dashboard and insight queries.
+
+The isolated API smoke tests exercise all four actions, active/archive lists, sorting, persistence, and actual rollback for missing/foreign IDs. Unit/API tests cover validation and origin/authentication boundaries. The in-app browser was signed out during verification, so a complete authenticated browser journey was not performed.
+
 ## Secure wardrobe image storage
 
 Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `apps/server/.env`; these credentials remain server-only. Wardrobe files are uploaded by the API using a server-generated random storage key—never a browser-provided path or unrestricted client credential. The API accepts only JPEG, PNG, and WebP after inspecting the actual file bytes, limits files to 10 MB, verifies safe dimensions, and rate-limits multipart upload requests.

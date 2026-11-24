@@ -67,6 +67,8 @@ jobs:
           npm test --workspace web
       - name: Build both applications
         run: npm run build
+      - name: Verify account and wardrobe persistence in a disposable database
+        run: npm run test:integration:isolated --workspace closetai-server
       - name: Run live API smoke flow against isolated database
         run: |
           npm run start --workspace closetai-server > "$RUNNER_TEMP/closetai-api.log" 2>&1 &

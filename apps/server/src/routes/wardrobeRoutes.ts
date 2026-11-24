@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
   analyzeWardrobeImage, createWardrobeItem, deleteWardrobeImage, deleteWardrobeItem,
   getWardrobe, getWardrobeItem, updateWardrobeItem,
-  toggleFavorite, toggleArchive, getWardrobeSummary,
+  toggleFavorite, toggleArchive, getWardrobeSummary, bulkUpdateWardrobe,
 } from '../controllers/wardrobeController';
 import { requireAuth } from '../middleware/requireAuth';
 import { uploadSingle } from '../middleware/upload';
@@ -16,6 +16,7 @@ router.use(requireAuth);
 
 router.get( '/',              asyncHandler(getWardrobe));
 router.get( '/summary',       asyncHandler(getWardrobeSummary));
+router.patch('/bulk',         asyncHandler(bulkUpdateWardrobe));
 router.get( '/:id',           asyncHandler(getWardrobeItem));
 router.post('/',              uploadLimiter, uploadSingle, asyncHandler(createWardrobeItem));
 router.patch('/:id',          uploadLimiter, uploadSingle, asyncHandler(updateWardrobeItem));

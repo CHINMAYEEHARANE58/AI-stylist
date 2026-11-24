@@ -15,9 +15,12 @@ interface ClothingCardProps {
   onToggleFavorite?: (id: string) => void;
   index?: number;
   href?: string;
+  onSelect?: (id: string) => void;
+  selected?: boolean;
+  selectionDisabled?: boolean;
 }
 
-export function ClothingCard({ item, isFavorite = false, onToggleFavorite, index = 0, href }: ClothingCardProps) {
+export function ClothingCard({ item, isFavorite = false, onToggleFavorite, index = 0, href, onSelect, selected = false, selectionDisabled = false }: ClothingCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -26,10 +29,12 @@ export function ClothingCard({ item, isFavorite = false, onToggleFavorite, index
       transition={{ duration: 0.45, delay: index * 0.05, ease: [0.25, 0.46, 0.45, 0.94] }}
       className="group masonry-item"
     >
-      <div className="overflow-hidden rounded-3xl border border-border/60 bg-card shadow-card transition-shadow duration-300 hover:shadow-card-hover">
+      <div className={cn("overflow-hidden rounded-3xl border border-border/60 bg-card shadow-card transition-shadow duration-300 hover:shadow-card-hover", selected && "ring-2 ring-primary")}>
         {/* Image */}
         <div className="relative overflow-hidden bg-muted">
-          {href ? (
+          {onSelect ? <button type="button" className="block w-full" aria-label={`Select photo of ${item.name}`} aria-pressed={selected} disabled={selectionDisabled} onClick={() => onSelect(item.id)}>
+            <Image src={item.image} alt={item.name} width={600} height={750} className="w-full object-cover" />
+          </button> : href ? (
             <Link href={href}>
               <Image
                 src={item.image}
@@ -54,7 +59,9 @@ export function ClothingCard({ item, isFavorite = false, onToggleFavorite, index
             <Badge variant="muted" size="sm" className="backdrop-blur-md bg-background/70 border-0">
               {item.category}
             </Badge>
-            <div className="flex gap-1.5">
+            {onSelect ? <label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-background/90">
+              <input type="checkbox" className="h-5 w-5 accent-current" aria-label={`Select ${item.name}`} checked={selected} disabled={selectionDisabled} onChange={() => onSelect(item.id)} />
+            </label> : <div className="flex gap-1.5">
               <button
                 type="button"
                 onClick={() => onToggleFavorite?.(item.id)}
@@ -75,11 +82,11 @@ export function ClothingCard({ item, isFavorite = false, onToggleFavorite, index
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
-            </div>
+            </div>}
           </div>
 
           {/* "Style this item" hover action */}
-          <div className="absolute inset-x-3 bottom-3 translate-y-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+          {!onSelect && <div className="absolute inset-x-3 bottom-3 translate-y-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
             <Link
               href={`/style-item/${item.id}`}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary/90 px-3 py-2.5 text-xs font-medium text-primary-foreground backdrop-blur-md"
@@ -87,7 +94,7 @@ export function ClothingCard({ item, isFavorite = false, onToggleFavorite, index
               <Sparkles className="h-3.5 w-3.5" />
               Style this item
             </Link>
-          </div>
+          </div>}
         </div>
 
         {/* Info */}

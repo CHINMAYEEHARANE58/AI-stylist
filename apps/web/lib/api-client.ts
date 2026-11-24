@@ -241,6 +241,11 @@ export interface WardrobeListParams {
 }
 
 export const wardrobeApi = {
+  bulkUpdate: (itemIds: string[], action: "favorite" | "unfavorite" | "archive" | "restore") =>
+    apiFetch<ApiSuccessResponse<{ updatedCount: number; action: string }>>("/wardrobe/bulk", {
+      method: "PATCH", body: JSON.stringify({ itemIds, action }),
+    }),
+
   list: (params: WardrobeListParams = {}) => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {

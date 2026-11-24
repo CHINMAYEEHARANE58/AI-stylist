@@ -104,6 +104,18 @@ async function coreFlow() {
     assert.equal(first.status, 201, 'first wardrobe item'); assert.equal(second.status, 201, 'second wardrobe item');
     const itemId = first.body.data.id;
     assert.equal((await call('GET', `/wardrobe/${itemId}`, null, loginCookies)).body.data.name, 'Audit top', 'item persisted');
+    const batchIds = [itemId, second.body.data.id];
+    const bulk = (action, itemIds = batchIds, cookies = loginCookies) => call('PATCH', '/wardrobe/bulk', { itemIds, action }, cookies);
+    assert.equal((await bulk('favorite')).body.data.updatedCount, 2, 'bulk favorites applied');
+    assert.equal((await call('GET', '/wardrobe?favorite=true', null, loginCookies)).body.meta.total, 2, 'favorites list persisted');
+    assert.equal((await bulk('archive')).status, 200, 'bulk archive');
+    assert.equal((await call('GET', '/wardrobe', null, loginCookies)).body.meta.total, 0, 'archived hidden from active wardrobe');
+    assert.equal((await call('GET', '/wardrobe?archived=true', null, loginCookies)).body.meta.total, 2, 'archived view');
+    assert.equal((await bulk('restore')).status, 200, 'bulk restore');
+    assert.equal((await bulk('unfavorite')).status, 200, 'bulk unfavorite');
+    assert.equal((await bulk('archive', [itemId, 'nonexistent-audit-item'])).status, 404, 'invalid batch rejected');
+    assert.equal((await db.clothingItem.findUnique({ where: { id: itemId } })).archived, false, 'invalid batch rolled back owned item update');
+    assert.equal((await call('GET', '/wardrobe?sortBy=name&sortDir=asc', null, loginCookies)).body.data[0].name, 'Audit bottom', 'name sort');
     const saved = await call('POST', '/outfits', { title: 'Audit look', clothingItemIds: [itemId, second.body.data.id] }, loginCookies);
     assert.equal(saved.status, 201, 'save manual outfit');
     assert.equal((await call('GET', '/outfits/saved', null, loginCookies)).body.data.length, 1, 'saved outfit persisted');
@@ -125,10 +137,15 @@ async function coreFlow() {
     const otherCode = await waitForCode(otherEmail);
     const other = await call('POST', '/auth/verify-email', { email: otherEmail, code: otherCode });
     const otherCookies = cookiesFrom(other);
+    const otherItem = await call('POST', '/wardrobe', { name: 'Audit private item', category: 'tops' }, otherCookies);
+    assert.equal(otherItem.status, 201, 'second-user wardrobe item');
+    assert.equal((await bulk('archive', [second.body.data.id, otherItem.body.data.id], newCookies)).status, 404, 'mixed ownership batch rejected');
+    assert.equal((await db.clothingItem.findUnique({ where: { id: second.body.data.id } })).archived, false, 'owned record rollback after foreign ID');
+    assert.equal((await db.clothingItem.findUnique({ where: { id: otherItem.body.data.id } })).archived, false, 'foreign record unchanged');
     assert.equal((await call('GET', `/wardrobe/${second.body.data.id}`, null, otherCookies)).status, 404, 'foreign wardrobe read rejected');
     assert.equal((await call('PATCH', `/wardrobe/${second.body.data.id}`, { name: 'Tampered' }, otherCookies)).status, 404, 'foreign wardrobe edit rejected');
     assert.equal((await call('GET', '/outfits/saved', null, otherCookies)).body.data.length, 0, 'saved outfits isolated');
-    console.info('Isolated signup, OTP, login, profile, wardrobe, outfit, logout, persistence and ownership flow: PASS.');
+    console.info('Isolated signup, OTP, login, profile, wardrobe bulk actions, archive/restore, outfit, logout, persistence and ownership flow: PASS.');
   } finally { await db.$disconnect(); }
 }
 async function main() {

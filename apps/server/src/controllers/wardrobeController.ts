@@ -28,6 +28,12 @@ function stringArray(max: number) {
 
 const optionalStringArray = stringArray(12).optional();
 
+const bulkUpdateSchema = z.object({
+  itemIds: z.array(z.string().trim().min(1).max(120)).min(1).max(100)
+    .refine((ids) => new Set(ids).size === ids.length, 'Choose each item only once.'),
+  action: z.enum(['favorite', 'unfavorite', 'archive', 'restore']),
+}).strict();
+
 const createSchema = z.object({
   name:        z.string().min(1).max(160).trim(),
   category:    z.string().min(1).max(80).trim(),
@@ -87,6 +93,23 @@ async function ensureWardrobe(userId: string): Promise<string> {
 
 // ── Controllers ───────────────────────────────────────────────────────
 
+export async function bulkUpdateWardrobe(req: Request, res: Response): Promise<void> {
+  const { itemIds, action } = bulkUpdateSchema.parse(req.body);
+  const userId = req.user!.id;
+  const data = action === 'favorite' || action === 'unfavorite'
+    ? { favorite: action === 'favorite' }
+    : { archived: action === 'archive' };
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.clothingItem.updateMany({ where: { id: { in: itemIds }, userId }, data });
+    if (updated.count !== itemIds.length) {
+      // Throwing rolls back every write, including owned IDs in a mixed request.
+      throw new AppError('One or more selected items are unavailable. Refresh your wardrobe and try again.', 404, true, 'BULK_ITEMS_UNAVAILABLE');
+    }
+    return updated;
+  });
+  ApiResponse.success(res, { updatedCount: result.count, action }, `${result.count} wardrobe items updated.`);
+}
+
 export async function getWardrobe(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
   const query  = listQuerySchema.parse(req.query);
@@ -115,7 +138,7 @@ export async function getWardrobe(req: Request, res: Response): Promise<void> {
     prisma.clothingItem.count({ where }),
     prisma.clothingItem.findMany({
       where,
-      orderBy: { [query.sortBy]: query.sortDir },
+      orderBy: [{ [query.sortBy]: query.sortDir }, { id: 'asc' }],
       skip: (query.page - 1) * query.perPage,
       take: query.perPage,
     }),

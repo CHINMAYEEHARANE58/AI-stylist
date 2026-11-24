@@ -1,6 +1,6 @@
 # ClosetAI test plan and executed evidence
 
-Updated 2026-11-14. Never use production credentials or a production database for these tests. `PASS` below means the specific test named passed, not that the entire feature is production-ready.
+Updated 2026-11-24. Never use production credentials or a production database for these tests. `PASS` below means the specific test named passed, not that the entire feature is production-ready.
 
 ## Local setup and commands
 
@@ -43,7 +43,7 @@ The last command currently reports unresolved advisories and is a release gate, 
 
 | Check | Command / method | Result |
 |---|---|---|
-| Backend unit and mocked API routes | `npm test --workspace closetai-server -- --reporter=dot` | 28 files, 130 tests passed; 0 failed, including unavailable/configured Google redirect tests |
+| Backend unit and mocked API routes | `npm test --workspace closetai-server -- --reporter=dot` | 32 files, 161 tests passed; 0 failed, including wardrobe bulk-action ownership and validation tests |
 | Frontend safe-return-path test | `npm test --workspace web` | 1 test passed; 0 failed |
 | Backend/frontend TypeScript | `npm run typecheck --workspace closetai-server` and `... web` | Both passed |
 | Backend/frontend lint | `npm run lint --workspace closetai-server` and `... web` | 0 errors; 41 backend and 21 frontend warnings remain |
@@ -60,6 +60,8 @@ The integration test exercises invalid/duplicate registration, hashed password a
 The Google follow-up tests verify that missing or example credentials produce an unavailable status and a frontend redirect, and that a configured test client produces a stateful PKCE redirect to Google. The live backend status and redirect were checked at ports 4000/3001, and both auth pages returned HTTP 200. The real Google chooser/callback was **not** tested because no OAuth client credentials are configured. Chrome automation was unavailable in this environment; the signed-in in-app browser could not exercise the logged-out button without altering its session.
 
 ## Automated coverage still needed
+
+Wardrobe management follow-up (2026-11-24): the isolated PostgreSQL smoke flow passed bulk favorite/unfavorite, archive/restore, favorites and archive list retrieval, name sorting, and transaction rollback for both missing IDs and a batch mixing two users' records. Cleanup removed only the generated disposable database. Both production builds, both type checks, and lint passed; CI now includes the isolated integration command. The browser session was signed out, so no completed authenticated browser interaction or physical-phone pass is claimed for these new controls.
 
 1. Repeatable browser E2E journeys for signup, login/refresh/logout, wardrobe editing, saved looks, and failures. The repository currently has **no Playwright project suite**; mobile checks used the in-app browser, not committed browser automation.
 2. Production email delivery, Google OAuth callback/consent, Cloudinary upload/replacement/deletion, real AI vision/chat/outfits, authorized shopping feed, and paid weather provider. These require external credentials and must be run as opt-in integration tests; mocks are not evidence of provider success.
